@@ -1,0 +1,168 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "添加 OneConnect Bridge 图形配置",
+        "description": "选择要管理 mapping.yaml 的 OneConnect Bridge 网关。",
+        "data": {
+          "gateway_entry_id": "网关"
+        }
+      }
+    },
+    "abort": {
+      "no_gateway": "没有找到 OneConnect Bridge 网关，请先添加网关。",
+      "all_configured": "所有 OneConnect Bridge 网关都已添加图形配置。"
+    },
+    "error": {
+      "unknown_gateway": "所选网关已不存在。"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "OneConnect Bridge 图形配置",
+        "menu_options": {
+          "add_child": "添加子设备（含实体绑定）",
+          "edit_child": "编辑子设备与实体",
+          "delete_child": "删除子设备",
+          "raw_yaml": "直接编辑 YAML",
+          "settings": "设置",
+          "reload": "立即重载"
+        }
+      },
+      "add_child": {
+        "title": "添加子设备（1/2）：选择产品模板",
+        "description": "先选产品模板，下一页会自动填好华为产品参数；没有对应模板时选「自定义」。\n\n自定义需要查华为 IoT 资料库：\n[全量目录](https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json)（按产品名或 DeviceId 搜索）\n[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成你的产品 ID）\n\nProfile 中：DeviceId → prod_id，deviceTypeId → device_type，deviceModel → model。",
+        "data": {
+          "template": "产品模板"
+        },
+        "data_description": {
+          "template": "9MU7 / 9MXO / 9MY5 是华为为 Home Assistant 提供的预置物模型；ZJ0V 是验证网关用的探针，不要用于正式设备。"
+        }
+      },
+      "add_product": {
+        "title": "添加子设备（2/2）：产品身份与服务",
+        "description": "模板参数已经带入，可按华为 Profile 修改。这里不选实体：提交后会在下一步逐个服务选择 HA 实体。\n\n参数来源：[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成 prod_id）。",
+        "data": {
+          "key": "子设备标识（key，可留空）",
+          "prod_id": "产品 ID（prod_id）",
+          "sub_prod_id": "子产品 ID（sub_prod_id）",
+          "device_type": "设备类型（device_type）",
+          "manufacturer": "厂商 ID（manufacturer）",
+          "model": "型号（model）",
+          "friendly_name": "显示名称",
+          "room": "房间",
+          "protocol_type": "协议类型（protocol_type）",
+          "setup_type": "配网类型（setup_type）",
+          "known_fields_only": "仅上报已知字段",
+          "services": "要投影的华为服务"
+        },
+        "data_description": {
+          "key": "留空会自动生成 device_1 这样的标识。只用于本地 YAML 和存储，不会发给华为；建议用英文或拼音，例如 living_room_bulb。",
+          "prod_id": "华为产品 ID，对应 Profile 文件名和目录里的 DeviceId，例如 9MU7。",
+          "sub_prod_id": "子产品 ID，一般是 00；留空时必须开启“仅上报已知字段”。",
+          "device_type": "华为设备类型，对应 Profile 的 deviceTypeId，例如 119。",
+          "manufacturer": "厂商 ID，华为设备固定为 002。",
+          "model": "设备型号，对应 Profile 的 deviceModel，例如 haTest10。",
+          "friendly_name": "显示在华为智慧生活 App 里的名称。",
+          "room": "显示在华为智慧生活 App 里的房间名，可留空。",
+          "protocol_type": "对应 Profile 的 protocolType，常见为 6。",
+          "setup_type": "对应 Profile 的 setupType，一般为 0。",
+          "known_fields_only": "只上报 Profile 中已知的字段；sub_prod_id 为空时必须开启。",
+          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。一个都不选就不会出现实体选择。"
+        }
+      },
+      "edit_child": {
+        "title": "编辑子设备",
+        "description": "选择要编辑的子设备。",
+        "data": {
+          "child": "子设备"
+        }
+      },
+      "edit_product": {
+        "title": "编辑子设备：产品身份与服务",
+        "description": "只修改需要变的字段；保留选中的服务会沿用原实体绑定，下一步可以重新选择实体。",
+        "data": {
+          "prod_id": "产品 ID（prod_id）",
+          "sub_prod_id": "子产品 ID（sub_prod_id）",
+          "device_type": "设备类型（device_type）",
+          "manufacturer": "厂商 ID（manufacturer）",
+          "model": "型号（model）",
+          "friendly_name": "显示名称",
+          "room": "房间",
+          "protocol_type": "协议类型（protocol_type）",
+          "setup_type": "配网类型（setup_type）",
+          "known_fields_only": "仅上报已知字段",
+          "services": "要投影的华为服务"
+        },
+        "data_description": {
+          "prod_id": "华为产品 ID，对应 Profile 文件名和目录里的 DeviceId，例如 9MU7。",
+          "sub_prod_id": "子产品 ID，一般是 00；留空时必须开启“仅上报已知字段”。",
+          "device_type": "华为设备类型，对应 Profile 的 deviceTypeId，例如 119。",
+          "manufacturer": "厂商 ID，华为设备固定为 002。",
+          "model": "设备型号，对应 Profile 的 deviceModel，例如 haTest10。",
+          "friendly_name": "显示在华为智慧生活 App 里的名称。",
+          "room": "显示在华为智慧生活 App 里的房间名，可留空。",
+          "protocol_type": "对应 Profile 的 protocolType，常见为 6。",
+          "setup_type": "对应 Profile 的 setupType，一般为 0。",
+          "known_fields_only": "只上报 Profile 中已知的字段；sub_prod_id 为空时必须开启。",
+          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。"
+        }
+      },
+      "service": {
+        "title": "选择实体（{index}/{total}）：{label}",
+        "description": "服务 {label}（{sid}）。请选择它对应的 HA 实体；不选实体该服务不会同步。\n\n{hint}",
+        "data": {
+          "st": "服务类型（st）",
+          "entities": "对应的 HA 实体",
+          "contract": "contract 覆盖（可选）"
+        },
+        "data_description": {
+          "st": "服务类型，默认按 sid 自动匹配；只有 Profile 明确要求时才改，例如 switch 改成 binarySwitch。",
+          "entities": "选择这个服务对应的 Home Assistant 实体，可多选（按服务要求）；一个都不选则不会同步。",
+          "contract": "可选。按 Profile 覆盖枚举、量程或字段名；留空使用适配器默认值。支持 YAML 或 JSON。"
+        }
+      },
+      "delete_child": {
+        "title": "删除子设备",
+        "description": "选择要删除的子设备。",
+        "data": {
+          "child": "子设备"
+        }
+      },
+      "delete_confirm": {
+        "title": "确认删除",
+        "description": "确认删除子设备 {child}？下次重载时会同时在华为云端删除它。",
+        "data": {
+          "confirm": "我已确认，执行删除"
+        }
+      },
+      "raw_yaml": {
+        "title": "直接编辑 mapping.yaml",
+        "description": "保存前会先用 OneConnect Bridge 的规则校验；校验失败不会覆盖当前文件。\n\n文件路径：{path}",
+        "data": {
+          "yaml": "mapping.yaml"
+        }
+      },
+      "settings": {
+        "title": "设置",
+        "description": "启用或停用该网关的子设备映射。",
+        "data": {
+          "enabled": "启用映射"
+        }
+      }
+    },
+    "error": {
+      "invalid_key": "请使用 1-64 位字母、数字、下划线或连字符。",
+      "duplicate_key": "该子设备标识已存在。",
+      "required": "此项必填。",
+      "invalid_contract": "contract 必须是 YAML/JSON 键值对。",
+      "yaml_invalid": "内容不是有效的 YAML 映射。",
+      "entities_required": "请至少选择一个 HA 实体。",
+      "services_required": "请至少选择一个服务，否则不会出现实体选择。"
+    },
+    "abort": {
+      "gateway_missing": "OneConnect Bridge 网关条目已不存在。"
+    }
+  }
+}
