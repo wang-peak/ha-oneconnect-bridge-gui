@@ -63,6 +63,7 @@ TEMPLATES: tuple[ProductTemplate, ...] = (
         device_type="347",
         model="MAEXTRO-S800 Grand Design",
         friendly_name="尊界S800 Grand Design",
+        protocol_type=1,
         known_fields_only=True,
         services=(),
     ),

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import shutil
 from pathlib import Path
 
@@ -13,6 +14,8 @@ from .const import GATEWAY_ROOT, MAPPING_FILENAME
 from .mapping_ops import new_mapping
 
 _LOGGER = logging.getLogger(__name__)
+
+SERIAL_PATTERN = re.compile(r"^[0-9A-Z_-]+$")
 
 HEADER = """\
 # 本文件由 OneConnect Bridge GUI 维护。
@@ -25,9 +28,17 @@ class MappingError(ValueError):
     """The mapping document cannot be read, rendered or validated."""
 
 
+def validate_serial(serial: str) -> None:
+    """Reject serials that upstream would treat as unsafe storage paths."""
+
+    if not isinstance(serial, str) or not SERIAL_PATTERN.fullmatch(serial):
+        raise MappingError("网关序列号无效：只允许大写字母、数字、下划线和连字符")
+
+
 def gateway_dir(config_dir: str, serial: str) -> Path:
     """Return the upstream storage directory for one gateway."""
 
+    validate_serial(serial)
     return Path(config_dir).joinpath(*GATEWAY_ROOT, serial)
 
 
@@ -93,38 +104,67 @@ def render_mapping(mapping: dict) -> str:
 
 
 def save_mapping(config_dir: str, serial: str, mapping: dict) -> Path:
-    """Validate, back up, then atomically replace mapping.yaml."""
+    """Validate, back up, then atomically replace mapping.yaml.
 
+    Enabled mappings are validated with the upstream loader. Disabled mappings
+    are only checked for the top-level fields: upstream skips child validation
+    when ``enabled`` is false, and forcing enabled validation here would make it
+    impossible to disable or repair a broken mapping through the GUI.
+    """
+
+    if not isinstance(mapping, dict):
+        raise MappingError("映射根节点必须是映射")
     path = mapping_path(config_dir, serial)
-    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-
-    # Validate a copy with the mapping enabled: upstream skips child validation
-    # when ``enabled`` is false, which would let broken children be saved.
-    validation = dict(mapping)
-    validation["enabled"] = True
+    temporary = path.with_name(f"{path.name}.tmp")
     check_path = path.with_name(f"{path.name}.check")
     try:
-        check_path.write_text(render_mapping(validation), encoding="utf-8")
-        _chmod(check_path)
-        _validate_file(check_path)
+        path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        if mapping.get("enabled") is True:
+            _validate_enabled(mapping, check_path)
+        else:
+            _validate_disabled(mapping)
+
+        text = render_mapping(mapping)
+        temporary.write_text(text, encoding="utf-8")
+        _chmod(temporary)
+
+        if path.is_file():
+            try:
+                shutil.copy2(path, backup_path(config_dir, serial))
+            except OSError as error:
+                _LOGGER.warning("Unable to back up %s: %s", path, error)
+
+        os.replace(temporary, path)
+        _chmod(path)
+    except OSError as error:
+        raise MappingError(f"无法写入 {path}: {error}") from error
     finally:
-        check_path.unlink(missing_ok=True)
-
-    text = render_mapping(mapping)
-    temporary = path.with_name(f"{path.name}.tmp")
-    temporary.write_text(text, encoding="utf-8")
-    _chmod(temporary)
-
-    if path.is_file():
-        try:
-            shutil.copy2(path, backup_path(config_dir, serial))
-        except OSError as error:
-            _LOGGER.warning("Unable to back up %s: %s", path, error)
-
-    os.replace(temporary, path)
-    _chmod(path)
+        for leftover in (check_path, temporary):
+            try:
+                leftover.unlink(missing_ok=True)
+            except OSError:
+                pass
     _LOGGER.info("Wrote OneConnect mapping for gateway %s", serial)
     return path
+
+
+def _validate_enabled(mapping: dict, check_path: Path) -> None:
+    """Validate a copy with the mapping enabled, as upstream will read it."""
+
+    validation = dict(mapping)
+    validation["enabled"] = True
+    check_path.write_text(render_mapping(validation), encoding="utf-8")
+    _chmod(check_path)
+    _validate_file(check_path)
+
+
+def _validate_disabled(mapping: dict) -> None:
+    """Check only what upstream checks before it returns a disabled plan."""
+
+    if mapping.get("schema") != 1:
+        raise MappingError("映射必须包含 schema: 1")
+    if "enabled" in mapping and not isinstance(mapping["enabled"], bool):
+        raise MappingError("enabled 必须是布尔值")
 
 
 def _chmod(path: Path) -> None:

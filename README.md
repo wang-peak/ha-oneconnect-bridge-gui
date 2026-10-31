@@ -51,7 +51,7 @@ HACS → 集成 → 右上角 ⋮ → 自定义存储库
 config/custom_components/oneconnect_bridge_gui/
 ```
 
-重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-0.2.4.zip`，解压到 `config/`。
+重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-0.2.5.zip`，解压到 `config/`。
 
 ## 使用
 
@@ -69,7 +69,7 @@ config/custom_components/oneconnect_bridge_gui/
 | 编辑子设备与实体 | 选已有子设备，改产品身份、服务选择和绑定 |
 | 删除子设备 | 二次确认后从 YAML 移除；重载时上游会同步删除云端子设备 |
 | 直接编辑 YAML | 内置文本编辑器，保存前同样走上游校验 |
-| 设置 | 启用 / 停用该网关的映射（`enabled`） |
+| 设置 | 启用 / 停用该网关的映射（`enabled`）；停用会触发重载，并让上游删除已注册的云端子设备 |
 | 立即重载 | 不修改文件，只让上游重新应用当前 YAML |
 
 ### 添加子设备
@@ -105,7 +105,7 @@ config/custom_components/oneconnect_bridge_gui/
 | `setup_type` | 配网类型 | `0` |
 | `known_fields_only` | 只上报 Profile 已知字段 | 关；`sub_prod_id` 为空时必须开 |
 | `services` | 要投影的华为服务 | 模板带入，可增减 |
-| `st` | 服务类型 | 按 sid 自动匹配，一般不用改（`switch` 可改 `binarySwitch`） |
+| `st` | 服务类型 | 按 sid 自动匹配，一般不用改（`switch` 可改 `binarySwitch`，`gasSensor` 固定 `gas`） |
 | `entities` | 对应的 HA 实体 | 必填，实体选择器 |
 | `contract` | 协议覆盖（枚举/量程/字段名） | 可留空 |
 
@@ -125,11 +125,20 @@ commands:
 常见示例：
 
 ```yaml
-# brightness / cct / openLevel / opener
+# brightness / openLevel / opener
 min: 0
 max: 100
 step: 1
+```
 
+```yaml
+# cct：色温单位是 Kelvin，不是 0-100
+min: 2000
+max: 6500
+step: 1
+```
+
+```yaml
 # switch 绑定 climate 时
 on_type: int
 on_mode: cool
@@ -157,6 +166,10 @@ fallback: 0
 
 各服务允许的 key 见表单上方提示；填错会在保存时由上游适配器报错，精确到字段。
 
+`action` 的 `commands` 角色必须匹配实体域：cover 用 `open/close/stop`，开关类用 `on/off`，扫地机用 `start/pause/cancel`；`status` 绑定 cover 时 `states` 用 `open/closed`（不是 `on/off`）。GUI 会在提交服务页时校验这些组合。
+
+YAML 里 `on` / `off` / `yes` / `no` 作为键或 `commands`/`states` 的值时必须加引号（如 `'on': 1`、`0: 'off'`），否则会被 YAML 解析成布尔值；GUI 会给出明确错误。
+
 ### 自定义产品参数去哪查
 
 模板里没有的产品，需要到华为 IoT 资料库查 `prod_id / device_type / model`：
@@ -183,7 +196,9 @@ Profile 字段对应关系：
 
 - 写入路径（与上游读取的完全一致）：
   `config/.storage/oneconnect_bridge/gateways/<serial>/mapping.yaml`
-- 每次保存前备份：同目录 `mapping.yaml.bak`（只保留上一版）。
+- 每次保存前备份：同目录 `mapping.yaml.bak`（只保留上一版；首次保存时文件还不存在，所以不会生成备份）。
+- **停用映射**：`enabled: false` 只校验顶层字段，允许先停用再修坏掉的 `children`；重新启用时会重新做完整校验。
+- **停用会删除云端子设备**：停用后触发重载，上游会把已注册的子设备从云端删除；重新启用后会重新注册，但云端设备 ID 可能变化。
 - **注释会被覆盖**：保存时文件被重新格式化，仅保留固定说明头。需要保留注释就用“直接编辑 YAML”。
 - **未知字段保留**：编辑已有子设备时，只更新 GUI 管理的字段（product 的已知键、services 列表、bindings），其他键原样保留；但 `services` 列表会按本次选择整体重写。
 - **未收录的 sid**：上游以后新增的服务不在内置目录时，仍会出现在“编辑”表单里，用通用实体选择器和 contract 文本框编辑，保存时由已安装的上游适配器校验。
@@ -209,7 +224,7 @@ Profile 字段对应关系：
 python tools/selftest.py
 ```
 
-覆盖：写入子设备、上游真实解析、整数键 contract 往返、备份、非法 contract 拒绝、`enabled: false` 时仍做结构校验。
+覆盖：写入子设备、上游真实解析、整数键 contract 往返、备份、非法 contract 拒绝、cct/gasSensor 默认值、停用损坏映射、serial 校验、文件系统错误包装。
 
 `tools/flowtest.py` 用最小 HA 桩跑完整的选项流状态机：
 
@@ -217,7 +232,7 @@ python tools/selftest.py
 python tools/flowtest.py
 ```
 
-覆盖：添加子设备、重复 key、`st` 覆盖、非法 contract 不落盘、编辑保留未知字段、删除确认、直接编辑 YAML、启停开关。
+覆盖：添加子设备、重复 key、`st` 覆盖、非法 contract 不落盘、编辑保留未知字段、删除确认、直接编辑 YAML、启停开关、9MU7 默认 cct、gasSensor、electric、action/status 域校验、YAML 布尔键、零服务子设备、停用损坏映射、重载失败。
 
 ## 许可
 

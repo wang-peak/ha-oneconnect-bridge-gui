@@ -26,6 +26,7 @@ from .product_templates import (
     template_defaults,
 )
 from .profile import (
+    SERIAL_PATTERN,
     MappingError,
     load_mapping,
     mapping_path,
@@ -33,12 +34,29 @@ from .profile import (
     save_mapping,
 )
 from .runtime import ReloadError, async_apply_mapping
-from .services_catalog import SERVICE_OPTIONS, ServiceSpec, get_spec
+from .services_catalog import (
+    ACTION_ROLES_BY_DOMAIN,
+    SERVICE_OPTIONS,
+    ServiceSpec,
+    get_spec,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
 OPTIONAL_PRODUCT_FIELDS = ("friendly_name", "room")
 REQUIRED_PRODUCT_FIELDS = ("prod_id", "device_type", "manufacturer", "model")
+
+
+class ContractKeyError(ValueError):
+    """YAML parsed an on/off-style key as a boolean instead of text."""
+
+
+def _valid_serial(value: Any) -> str | None:
+    """Return the serial only when upstream would accept it as a path."""
+
+    if isinstance(value, str) and SERIAL_PATTERN.fullmatch(value):
+        return value
+    return None
 
 
 def _int_value(value: Any, default: int) -> int:
@@ -79,6 +97,22 @@ def _dump_contract(contract: Any) -> str:
         return ""
 
 
+def _reject_boolean_keys(value: Any) -> None:
+    """Reject YAML keys/values such as ``on``/``off`` parsed as booleans."""
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, bool):
+                raise ContractKeyError("YAML parsed a boolean key")
+            if key in {"commands", "states"} and isinstance(item, dict):
+                if any(isinstance(role, bool) for role in item.values()):
+                    raise ContractKeyError("YAML parsed a boolean command/state value")
+            _reject_boolean_keys(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            _reject_boolean_keys(item)
+
+
 def _parse_contract(text: str) -> dict:
     if not text.strip():
         return {}
@@ -88,9 +122,45 @@ def _parse_contract(text: str) -> dict:
         raise ValueError(str(error)) from error
     if value is None:
         return {}
+    _reject_boolean_keys(value)
     if not isinstance(value, dict):
         raise TypeError("contract 必须是键值对")
     return value
+
+
+def _entity_domain(entities: list[str]) -> str:
+    return entities[0].partition(".")[0] if entities else ""
+
+
+def _contract_domain_error(sid: str, entities: list[str], contract: dict) -> str | None:
+    """Return a translation key when the contract cannot work for this domain."""
+
+    if sid in {"action", "leftAction"}:
+        domain = _entity_domain(entities)
+        supported = ACTION_ROLES_BY_DOMAIN.get(domain)
+        if supported is None:
+            return None
+        commands = contract.get("commands")
+        if not commands:
+            # cover-like domains have a usable upstream default; every other
+            # domain needs explicit commands or upstream skips the service.
+            return None if domain == "cover" else "action_commands_required"
+        if not isinstance(commands, dict) or any(
+            not isinstance(role, str) or role not in supported
+            for role in commands.values()
+        ):
+            return "action_roles_invalid"
+        return None
+    if sid == "electric":
+        fields = contract.get("fields")
+        if not isinstance(fields, list) or not fields:
+            return "electric_fields_required"
+        return None
+    if sid == "status" and _entity_domain(entities) == "cover":
+        states = contract.get("states")
+        if isinstance(states, dict) and set(states) == {"on", "off"}:
+            return "status_cover_default"
+    return None
 
 
 def _product_schema(
@@ -115,7 +185,7 @@ def _product_schema(
         selector.TextSelector()
     )
     fields[
-        vol.Required("sub_prod_id", default=str(defaults.get("sub_prod_id", "")))
+        vol.Optional("sub_prod_id", default=str(defaults.get("sub_prod_id", "")))
     ] = selector.TextSelector()
     fields[
         vol.Required("device_type", default=str(defaults.get("device_type", "")))
@@ -280,15 +350,22 @@ class OneConnectBridgeGuiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         if not upstream:
             return self.async_abort(reason="no_gateway")
 
+        valid_gateways = [
+            entry for entry in upstream if _valid_serial(entry.data.get(CONF_SERIAL))
+        ]
+        if not valid_gateways:
+            # Covers upgraded/corrupted entries whose serial cannot be used as
+            # the upstream storage directory name.
+            return self.async_abort(reason="invalid_gateway")
+
         configured = {
             entry.data.get(CONF_SERIAL)
             for entry in self.hass.config_entries.async_entries(DOMAIN)
         }
         available = [
             entry
-            for entry in upstream
-            if entry.data.get(CONF_SERIAL)
-            and entry.data.get(CONF_SERIAL) not in configured
+            for entry in valid_gateways
+            if entry.data.get(CONF_SERIAL) not in configured
         ]
         if not available:
             return self.async_abort(reason="all_configured")
@@ -305,9 +382,15 @@ class OneConnectBridgeGuiConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             target = self.hass.config_entries.async_get_entry(
                 user_input[CONF_GATEWAY_ENTRY_ID]
             )
-            serial = target.data.get(CONF_SERIAL) if target is not None else None
-            if not isinstance(serial, str) or not serial:
+            serial = (
+                _valid_serial(target.data.get(CONF_SERIAL))
+                if target is not None
+                else None
+            )
+            if target is None:
                 errors["base"] = "unknown_gateway"
+            elif serial is None:
+                errors["base"] = "invalid_gateway"
             else:
                 await self.async_set_unique_id(serial)
                 self._abort_if_unique_id_configured()
@@ -382,37 +465,44 @@ class OptionsFlow(config_entries.OptionsFlow):
         gateway = self._gateway_entry
         if gateway is None:
             return None
-        serial = gateway.data.get(CONF_SERIAL)
-        if isinstance(serial, str) and serial:
-            return serial
-        return gateway.title
+        # Never fall back to ``gateway.title``: the title is user-editable and
+        # would become part of the upstream storage path.
+        return _valid_serial(gateway.data.get(CONF_SERIAL))
 
     def _config_dir(self) -> str:
         return self.hass.config.path()
 
+    def _require_serial(self) -> str:
+        serial = self._serial
+        if not serial:
+            raise MappingError("找不到对应的 OneConnect Bridge 网关条目，请重新打开配置")
+        return serial
+
     async def _load(self) -> dict:
+        serial = self._require_serial()
         return await self.hass.async_add_executor_job(
-            load_mapping, self._config_dir(), self._serial
+            load_mapping, self._config_dir(), serial
         )
 
     async def _save(self, mapping: dict) -> None:
+        serial = self._require_serial()
         await self.hass.async_add_executor_job(
-            save_mapping, self._config_dir(), self._serial, mapping
+            save_mapping, self._config_dir(), serial, mapping
         )
 
     async def _read_text(self) -> str:
+        serial = self._require_serial()
         return await self.hass.async_add_executor_job(
-            read_mapping_text, self._config_dir(), self._serial
+            read_mapping_text, self._config_dir(), serial
         )
 
     async def _apply(self) -> tuple[bool, str | None]:
         gateway = self._gateway_entry
-        if gateway is None or not self._serial:
+        serial = self._serial
+        if gateway is None or not serial:
             return False, "找不到对应的 OneConnect Bridge 网关条目"
         try:
-            method = await async_apply_mapping(
-                self.hass, gateway.entry_id, self._serial
-            )
+            method = await async_apply_mapping(self.hass, gateway.entry_id, serial)
         except ReloadError as error:
             return False, str(error)
         _LOGGER.debug("Mapping applied through %s", method)
@@ -449,8 +539,10 @@ class OptionsFlow(config_entries.OptionsFlow):
     # -- menu ------------------------------------------------------------
 
     async def async_step_init(self, user_input=None):
-        if self._gateway_entry is None or not self._serial:
+        if self._gateway_entry is None:
             return self.async_abort(reason="gateway_missing")
+        if not self._serial:
+            return self.async_abort(reason="invalid_gateway")
         return self.async_show_menu(
             step_id="init",
             menu_options=[
@@ -506,8 +598,8 @@ class OptionsFlow(config_entries.OptionsFlow):
             mapping: dict | None = None
             if missing:
                 errors[missing] = "required"
-            if not services and self._template_key != "zj0v":
-                errors["services"] = "services_required"
+            if not product["sub_prod_id"] and not product["known_fields_only"]:
+                errors["known_fields_only"] = "sub_prod_id_requires_known_fields"
             if not errors:
                 try:
                     mapping = await self._load()
@@ -595,8 +687,13 @@ class OptionsFlow(config_entries.OptionsFlow):
         extras = list(self._services)
         if user_input is not None:
             product = _product_from_input(user_input)
+            errors: dict[str, str] = {}
             missing = _missing_product_field(product)
             if missing:
+                errors[missing] = "required"
+            if not product["sub_prod_id"] and not product["known_fields_only"]:
+                errors["known_fields_only"] = "sub_prod_id_requires_known_fields"
+            if errors:
                 merged = dict(defaults)
                 merged.update(
                     {key: value for key, value in user_input.items() if value is not None}
@@ -606,7 +703,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                     data_schema=_product_schema(
                         merged, include_key=False, service_options=self._service_options(extras)
                     ),
-                    errors={missing: "required"},
+                    errors=errors,
                 )
             selected = [
                 sid
@@ -673,8 +770,14 @@ class OptionsFlow(config_entries.OptionsFlow):
                 errors["entities"] = "entities_required"
             try:
                 contract = _parse_contract(contract_text)
+            except ContractKeyError:
+                errors["contract"] = "contract_bool_key"
             except (TypeError, ValueError):
                 errors["contract"] = "invalid_contract"
+            else:
+                domain_error = _contract_domain_error(sid, entities, contract)
+                if domain_error is not None:
+                    errors["contract"] = domain_error
             if not errors:
                 self._service_values[sid] = {
                     "entities": entities,
@@ -703,6 +806,9 @@ class OptionsFlow(config_entries.OptionsFlow):
     async def _finish(self):
         if not self._key:
             return await self._fail("子设备标识丢失，请重新开始")
+        serial = self._serial
+        if not serial:
+            return await self._fail("找不到对应的 OneConnect Bridge 网关条目，请重新打开配置")
         try:
             mapping = await self._load()
         except MappingError as error:
@@ -736,7 +842,7 @@ class OptionsFlow(config_entries.OptionsFlow):
             upsert_child(mapping, self._key, child)
         except ValueError as error:
             return await self._fail(str(error))
-        ensure_defaults(mapping, self._serial or "")
+        ensure_defaults(mapping, serial)
         try:
             await self._save(mapping)
         except MappingError as error:
@@ -745,7 +851,7 @@ class OptionsFlow(config_entries.OptionsFlow):
         applied, error = await self._apply()
         message = (
             f"子设备 {self._key} 已写入：\n"
-            f"`{mapping_path(self._config_dir(), self._serial or '')}`"
+            f"`{mapping_path(self._config_dir(), serial)}`"
         )
         if applied:
             message += "\n\n已触发重载。"
@@ -755,7 +861,10 @@ class OptionsFlow(config_entries.OptionsFlow):
                 "请到「设置 → 设备与服务」手动重新加载 OneConnect Bridge。"
             )
         if mapping.get("enabled") is not True:
-            message += "\n\n注意：当前 enabled 为 false，子设备不会注册；可在“设置”中启用。"
+            message += (
+                "\n\n注意：当前 enabled 不是 true，子设备不会注册；"
+                "上游重载还可能删除已注册的云端子设备，重新启用后会重新注册。"
+            )
         self._notify("已保存并重载" if applied else "已保存", message)
         return await self.async_step_init()
 
@@ -829,6 +938,9 @@ class OptionsFlow(config_entries.OptionsFlow):
     # -- raw YAML --------------------------------------------------------
 
     async def async_step_raw_yaml(self, user_input=None):
+        serial = self._serial
+        if not serial:
+            return await self._fail("找不到对应的 OneConnect Bridge 网关条目，请重新打开配置")
         errors: dict[str, str] = {}
         text = ""
         if user_input is not None:
@@ -856,6 +968,11 @@ class OptionsFlow(config_entries.OptionsFlow):
                             f"\n\n自动重载未成功：{reload_error}\n"
                             "请到「设置 → 设备与服务」手动重新加载 OneConnect Bridge。"
                         )
+                    if value.get("enabled") is not True:
+                        message += (
+                            "\n\n注意：当前 enabled 不是 true，上游会停用映射；"
+                            "重载会删除已注册的云端子设备，重新启用后会重新注册。"
+                        )
                     self._notify("YAML 已保存", message)
                     return await self.async_step_init()
         if not text:
@@ -874,26 +991,37 @@ class OptionsFlow(config_entries.OptionsFlow):
             ),
             errors=errors,
             description_placeholders={
-                "path": str(mapping_path(self._config_dir(), self._serial or ""))
+                "path": str(mapping_path(self._config_dir(), serial))
             },
         )
 
     # -- settings --------------------------------------------------------
 
     async def async_step_settings(self, user_input=None):
+        serial = self._serial
+        if not serial:
+            return await self._fail("找不到对应的 OneConnect Bridge 网关条目，请重新打开配置")
         try:
             mapping = await self._load()
         except MappingError as error:
             return await self._fail(str(error))
         if user_input is not None:
             mapping["enabled"] = bool(user_input.get("enabled", True))
-            ensure_defaults(mapping, self._serial or "")
+            ensure_defaults(mapping, serial)
             try:
                 await self._save(mapping)
             except MappingError as error:
                 return await self._fail(f"保存失败：{error}")
             applied, reload_error = await self._apply()
-            message = "映射已启用。" if mapping["enabled"] else "映射已停用，子设备不会注册。"
+            if mapping["enabled"]:
+                message = "映射已启用。"
+            elif applied:
+                message = (
+                    "映射已停用；上游重载会删除已注册的云端子设备，"
+                    "重新启用后会重新注册。"
+                )
+            else:
+                message = "映射已停用，但自动重载未成功；云端子设备暂时不会删除。"
             if not applied:
                 message += f"\n\n自动重载未成功：{reload_error}"
             self._notify("设置已保存", message)

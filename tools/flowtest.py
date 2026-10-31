@@ -192,7 +192,9 @@ def _install_homeassistant_stubs() -> None:
 
 _install_homeassistant_stubs()
 
-from custom_components.oneconnect_bridge_gui import config_flow, profile
+from custom_components.oneconnect_bridge_gui import config_flow, profile, runtime
+from custom_components.oneconnect_bridge_gui.product_templates import template_defaults
+from custom_components.oneconnect_bridge_gui.services_catalog import get_spec
 
 SERIAL = "09E200A76943E0DF"
 
@@ -208,6 +210,7 @@ class FakeConfig:
 class FakeConfigEntries:
     def __init__(self, entries) -> None:
         self.entries = {entry.entry_id: entry for entry in entries}
+        self.reload_result = True
 
     def async_get_entry(self, entry_id):
         return self.entries.get(entry_id)
@@ -218,6 +221,9 @@ class FakeConfigEntries:
             for entry in self.entries.values()
             if getattr(entry, "domain", None) == domain
         ]
+
+    async def async_reload(self, entry_id):
+        return self.reload_result
 
 
 class FakeHass:
@@ -360,29 +366,37 @@ async def main() -> None:
         assert form["errors"].get("entities") == "entities_required", form
         print("entity required: OK")
 
-        # The probe template intentionally allows zero services.
+        # Empty sub_prod_id requires known_fields_only on the product page.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "custom"})
+        form = await flow.async_step_add_product(
+            {
+                **BASE_PRODUCT,
+                "key": "badsub",
+                "sub_prod_id": "",
+                "known_fields_only": False,
+                "services": ["switch"],
+            }
+        )
+        assert (
+            form["errors"].get("known_fields_only")
+            == "sub_prod_id_requires_known_fields"
+        ), form
+        print("sub_prod_id cross-check: OK")
+
+        # The probe template intentionally allows zero services and keeps the
+        # upstream sample's protocol_type.
         flow = config_flow.OptionsFlow(gui)
         flow.hass = hass
         await flow.async_step_add_child({"template": "zj0v"})
         form = await flow.async_step_add_product(
-            {
-                "key": "probe",
-                "prod_id": "ZJ0V",
-                "sub_prod_id": "",
-                "device_type": "347",
-                "manufacturer": "002",
-                "model": "MAEXTRO-S800 Grand Design",
-                "friendly_name": "尊界S800 Grand Design",
-                "room": "",
-                "protocol_type": 6,
-                "setup_type": 0,
-                "known_fields_only": True,
-                "services": [],
-            }
+            {**template_defaults("zj0v"), "key": "probe"}
         )
         assert form["type"] == "menu", form
         probe = profile.load_mapping(temporary, SERIAL)["children"]["probe"]
         assert probe["product"]["services"] == []
+        assert probe["product"]["protocol_type"] == 1
         print("probe template: OK")
 
         # An empty key is generated automatically.
@@ -487,6 +501,245 @@ async def main() -> None:
         assert result["type"] == "menu", result
         assert profile.load_mapping(temporary, SERIAL)["enabled"] is True
         print("raw YAML and settings: OK")
+
+        # The default 9MU7 flow must accept its prefilled cct contract.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "9mu7"})
+        form = await flow.async_step_add_product(
+            {
+                **BASE_PRODUCT,
+                "key": "cctbulb",
+                "services": ["switch", "brightness", "cct"],
+            }
+        )
+        assert form["step_id"] == "service", form
+        for sid, contract in (
+            ("switch", ""),
+            ("brightness", "min: 0\nmax: 100\nstep: 1"),
+            ("cct", config_flow._dump_contract(get_spec("cct").contract_template)),
+        ):
+            form = await flow.async_step_service(
+                {"st": sid, "entities": "light.cct", "contract": contract}
+            )
+        assert form["type"] == "menu", form
+        cct_services = profile.load_mapping(temporary, SERIAL)["children"][
+            "cctbulb"
+        ]["product"]["services"]
+        assert cct_services[2]["contract"] == {"min": 2000, "max": 6500, "step": 1}
+        print("cct default contract: OK")
+
+        # gasSensor must use the adapter's required st=gas.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "custom"})
+        form = await flow.async_step_add_product(
+            {
+                **BASE_PRODUCT,
+                "key": "gas",
+                "prod_id": "TEST",
+                "services": ["gasSensor"],
+            }
+        )
+        assert form["step_id"] == "service", form
+        result = await flow.async_step_service(
+            {
+                "st": get_spec("gasSensor").st,
+                "entities": "sensor.gas",
+                "contract": "",
+            }
+        )
+        assert result["type"] == "menu", result
+        gas_service = profile.load_mapping(temporary, SERIAL)["children"]["gas"][
+            "product"
+        ]["services"][0]
+        assert gas_service["st"] == "gas", gas_service
+        print("gasSensor st: OK")
+
+        # electric cannot be saved without the required fields list.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "custom"})
+        form = await flow.async_step_add_product(
+            {
+                **BASE_PRODUCT,
+                "key": "electric",
+                "prod_id": "TEST",
+                "services": ["electric"],
+            }
+        )
+        assert form["step_id"] == "service", form
+        form = await flow.async_step_service(
+            {"st": "electric", "entities": "sensor.power", "contract": ""}
+        )
+        assert form["errors"].get("contract") == "electric_fields_required", form
+        print("electric fields: OK")
+
+        # action roles must match the selected entity domain.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "custom"})
+        form = await flow.async_step_add_product(
+            {**BASE_PRODUCT, "key": "act", "prod_id": "TEST", "services": ["action"]}
+        )
+        assert form["step_id"] == "service", form
+        form = await flow.async_step_service(
+            {
+                "st": "action",
+                "entities": "switch.plug",
+                "contract": "commands:\n  0: close\n  1: open\n  2: stop",
+            }
+        )
+        assert form["errors"].get("contract") == "action_roles_invalid", form
+        form = await flow.async_step_service(
+            {
+                "st": "action",
+                "entities": "switch.plug",
+                "contract": "commands:\n  0: off\n  1: on",
+            }
+        )
+        assert form["errors"].get("contract") == "contract_bool_key", form
+        form = await flow.async_step_service(
+            {
+                "st": "action",
+                "entities": "switch.plug",
+                "contract": "commands:\n  0: 'off'\n  1: 'on'",
+            }
+        )
+        assert form["type"] == "menu", form
+        print("action domain roles: OK")
+
+        # The binary_sensor status default must be rejected for cover entities.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "custom"})
+        form = await flow.async_step_add_product(
+            {
+                **BASE_PRODUCT,
+                "key": "coverstatus",
+                "prod_id": "TEST",
+                "services": ["status"],
+            }
+        )
+        assert form["step_id"] == "service", form
+        form = await flow.async_step_service(
+            {
+                "st": "status",
+                "entities": "cover.curtain",
+                "contract": "states:\n  'on': 1\n  'off': 0",
+            }
+        )
+        assert form["errors"].get("contract") == "status_cover_default", form
+        form = await flow.async_step_service(
+            {
+                "st": "status",
+                "entities": "cover.curtain",
+                "contract": "states:\n  closed: 1\n  open: 2",
+            }
+        )
+        assert form["type"] == "menu", form
+        print("status cover default: OK")
+
+        # YAML on/off keys are booleans and must produce a targeted error.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "custom"})
+        form = await flow.async_step_add_product(
+            {
+                **BASE_PRODUCT,
+                "key": "boolkey",
+                "prod_id": "TEST",
+                "services": ["status"],
+            }
+        )
+        assert form["step_id"] == "service", form
+        form = await flow.async_step_service(
+            {
+                "st": "status",
+                "entities": "binary_sensor.door",
+                "contract": "states:\n  on: 1\n  off: 0",
+            }
+        )
+        assert form["errors"].get("contract") == "contract_bool_key", form
+        print("YAML boolean keys: OK")
+
+        # A custom product may legitimately select no services.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_add_child({"template": "custom"})
+        result = await flow.async_step_add_product(
+            {
+                **BASE_PRODUCT,
+                "key": "nosvc",
+                "prod_id": "TEST",
+                "services": [],
+            }
+        )
+        assert result["type"] == "menu", result
+        nosvc = profile.load_mapping(temporary, SERIAL)["children"]["nosvc"]
+        assert nosvc["product"]["services"] == []
+        print("zero-service custom child: OK")
+
+        # A broken enabled mapping can still be disabled...
+        broken_text = (
+            f"schema: 1\nenabled: true\ngateway_serial: {SERIAL}\nchildren:\n"
+            "  broken:\n"
+            "    product:\n"
+            "      prod_id: TEST\n"
+            "      sub_prod_id: '00'\n"
+            "      device_type: '999'\n"
+            "      manufacturer: '002'\n"
+            "      model: broken\n"
+            "      protocol_type: 6\n"
+            "      setup_type: 0\n"
+            "      known_fields_only: false\n"
+            "      services:\n"
+            "        - st: status\n"
+            "          sid: status\n"
+            "          contract: {states: {}}\n"
+        )
+        profile.mapping_path(temporary, SERIAL).write_text(
+            broken_text, encoding="utf-8"
+        )
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        result = await flow.async_step_settings({"enabled": False})
+        assert result["type"] == "menu", result
+        assert profile.load_mapping(temporary, SERIAL)["enabled"] is False
+        # ...but re-enabling it must still fail validation.
+        result = await flow.async_step_settings({"enabled": True})
+        assert result["type"] == "menu", result
+        assert profile.load_mapping(temporary, SERIAL)["enabled"] is False
+        print("disable broken mapping: OK")
+
+        # The fallback entry reload must surface a False result as a failure.
+        reload_hass = FakeHass(temporary, _gateway_and_gui())
+        reload_hass.config_entries.reload_result = False
+        try:
+            await runtime.async_apply_mapping(reload_hass, "gw1", SERIAL)
+        except runtime.ReloadError:
+            pass
+        else:
+            raise AssertionError("a failed entry reload must raise ReloadError")
+        reload_hass.config_entries.reload_result = True
+        assert await runtime.async_apply_mapping(reload_hass, "gw1", SERIAL) == "entry"
+        print("reload result: OK")
+
+        # An upstream entry with an unsafe serial must not reach the path layer.
+        bad_gateway = config_flow.config_entries.ConfigEntry(
+            "gwbad", {"serial": "../escape"}, "../escape"
+        )
+        bad_gateway.domain = "oneconnect_bridge"
+        bad_gui = config_flow.config_entries.ConfigEntry(
+            "guibad", {"gateway_entry_id": "gwbad", "serial": "../escape"}, "../escape"
+        )
+        bad_gui.domain = "oneconnect_bridge_gui"
+        bad_hass = FakeHass(temporary, [bad_gateway, bad_gui])
+        bad_flow = config_flow.OptionsFlow(bad_gui)
+        bad_flow.hass = bad_hass
+        result = await bad_flow.async_step_init()
+        assert result == {"type": "abort", "reason": "invalid_gateway"}, result
+        print("invalid serial abort: OK")
 
     print("flowtest OK")
 

@@ -45,8 +45,12 @@ async def async_apply_mapping(
     if entry is None:
         raise ReloadError("找不到对应的 OneConnect Bridge 配置条目，可能已被删除")
     try:
-        await hass.config_entries.async_reload(gateway_entry_id)
+        result = await hass.config_entries.async_reload(gateway_entry_id)
     except Exception as error:
         raise ReloadError(str(error)) from error
+    if result is False:
+        raise ReloadError(
+            "OneConnect Bridge 重新加载失败，请查看 Home Assistant 日志后重试"
+        )
     _LOGGER.info("Reloaded OneConnect Bridge entry %s to apply mapping", serial)
     return "entry"

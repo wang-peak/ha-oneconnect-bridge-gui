@@ -11,10 +11,12 @@
     },
     "abort": {
       "no_gateway": "没有找到 OneConnect Bridge 网关，请先添加网关。",
-      "all_configured": "所有 OneConnect Bridge 网关都已添加图形配置。"
+      "all_configured": "所有 OneConnect Bridge 网关都已添加图形配置。",
+      "invalid_gateway": "OneConnect Bridge 网关的序列号缺失或包含不支持的字符，请先检查上游集成。"
     },
     "error": {
-      "unknown_gateway": "所选网关已不存在。"
+      "unknown_gateway": "所选网关已不存在。",
+      "invalid_gateway": "所选网关的序列号无效，无法创建存储路径。"
     }
   },
   "options": {
@@ -69,7 +71,7 @@
           "protocol_type": "对应 Profile 的 protocolType，常见为 6。",
           "setup_type": "对应 Profile 的 setupType，一般为 0。",
           "known_fields_only": "只上报 Profile 中已知的字段；sub_prod_id 为空时必须开启。",
-          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。一个都不选就不会出现实体选择。"
+          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。可以不选：不选则只注册设备，不投影任何服务。"
         }
       },
       "edit_child": {
@@ -106,12 +108,12 @@
           "protocol_type": "对应 Profile 的 protocolType，常见为 6。",
           "setup_type": "对应 Profile 的 setupType，一般为 0。",
           "known_fields_only": "只上报 Profile 中已知的字段；sub_prod_id 为空时必须开启。",
-          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。"
+          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。可以不选：不选则只注册设备，不投影任何服务。"
         }
       },
       "service": {
         "title": "选择实体（{index}/{total}）：{label}",
-        "description": "服务 {label}（{sid}）。请选择它对应的 HA 实体；不选实体该服务不会同步。\n\n{hint}",
+        "description": "服务 {label}（{sid}）。请选择它对应的 HA 实体；必须至少选择一个实体才能提交。\n\n{hint}",
         "data": {
           "st": "服务类型（st）",
           "entities": "对应的 HA 实体",
@@ -119,7 +121,7 @@
         },
         "data_description": {
           "st": "服务类型，默认按 sid 自动匹配；只有 Profile 明确要求时才改，例如 switch 改成 binarySwitch。",
-          "entities": "选择这个服务对应的 Home Assistant 实体，可多选（按服务要求）；一个都不选则不会同步。",
+          "entities": "选择这个服务对应的 Home Assistant 实体，必填；按服务要求可多选。",
           "contract": "可选。按 Profile 覆盖枚举、量程或字段名；留空使用适配器默认值。支持 YAML 或 JSON。"
         }
       },
@@ -146,7 +148,7 @@
       },
       "settings": {
         "title": "设置",
-        "description": "启用或停用该网关的子设备映射。",
+        "description": "启用或停用该网关的子设备映射。停用会立即重载，上游会从云端删除已注册的子设备；重新启用后会重新注册。",
         "data": {
           "enabled": "启用映射"
         }
@@ -156,13 +158,19 @@
       "invalid_key": "请使用 1-64 位字母、数字、下划线或连字符。",
       "duplicate_key": "该子设备标识已存在。",
       "required": "此项必填。",
+      "sub_prod_id_requires_known_fields": "sub_prod_id 为空时必须开启“仅上报已知字段”。",
       "invalid_contract": "contract 必须是 YAML/JSON 键值对。",
+      "contract_bool_key": "contract 里的 on/off/yes/no 被 YAML 当成了布尔值；请给键或值加引号，例如 'on': 1 或 0: 'off'。",
+      "action_commands_required": "action 绑定非 cover 实体时必须显式配置 commands，例如开关类 0=off、1=on；扫地机 0=pause、1=start、2=cancel。",
+      "action_roles_invalid": "contract.commands 的角色不适用于所选实体域；cover 用 open/close/stop，开关类用 on/off，扫地机用 start/pause/cancel。",
+      "electric_fields_required": "electric 必须在 contract 中配置非空的 fields，例如 fields: [totalConsum, current, voltage]。",
+      "status_cover_default": "cover 的状态是 open/closed，不是 on/off；请按 Profile 修改 states，例如 closed=1、open=2。",
       "yaml_invalid": "内容不是有效的 YAML 映射。",
-      "entities_required": "请至少选择一个 HA 实体。",
-      "services_required": "请至少选择一个服务，否则不会出现实体选择。"
+      "entities_required": "请至少选择一个 HA 实体。"
     },
     "abort": {
-      "gateway_missing": "OneConnect Bridge 网关条目已不存在。"
+      "gateway_missing": "OneConnect Bridge 网关条目已不存在。",
+      "invalid_gateway": "OneConnect Bridge 网关条目的序列号无效，无法访问 mapping.yaml。"
     }
   }
 }

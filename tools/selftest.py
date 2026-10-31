@@ -197,7 +197,64 @@ def main() -> None:
             raise AssertionError("cct with an unknown contract key should be rejected")
         assert path.read_text(encoding="utf-8") == before
 
-        # Disabled mappings are still validated against the enabled schema.
+        # The prefilled cct template must be valid for the upstream adapter.
+        cct_mapping = mapping_ops.new_mapping(SERIAL)
+        mapping_ops.upsert_child(
+            cct_mapping,
+            "cct_bulb",
+            _build_child(
+                {
+                    "prod_id": "9MU7",
+                    "sub_prod_id": "00",
+                    "device_type": "119",
+                    "manufacturer": "002",
+                    "model": "haTest10",
+                    "friendly_name": "cct bulb",
+                    "protocol_type": 6,
+                    "setup_type": 0,
+                    "known_fields_only": False,
+                    "services": [
+                        {
+                            "st": "cct",
+                            "sid": "cct",
+                            "contract": dict(CATALOG["cct"].contract_template),
+                        }
+                    ],
+                },
+                [{"sid": "cct", "entities": ["light.bulb"]}],
+            ),
+        )
+        profile.save_mapping(config_dir, SERIAL, cct_mapping)
+        assert len(load_enabled_mapping(path).children) == 1
+
+        # The gasSensor catalog must use the st value the adapter requires.
+        gas_mapping = mapping_ops.new_mapping(SERIAL)
+        mapping_ops.upsert_child(
+            gas_mapping,
+            "gas",
+            _build_child(
+                {
+                    "prod_id": "TEST",
+                    "sub_prod_id": "00",
+                    "device_type": "999",
+                    "manufacturer": "002",
+                    "model": "gas",
+                    "protocol_type": 6,
+                    "setup_type": 0,
+                    "known_fields_only": False,
+                    "services": [
+                        {"st": get_spec("gasSensor").st, "sid": "gasSensor"}
+                    ],
+                },
+                [{"sid": "gasSensor", "entities": ["sensor.gas"]}],
+            ),
+        )
+        profile.save_mapping(config_dir, SERIAL, gas_mapping)
+        assert len(load_enabled_mapping(path).children) == 1
+
+        # Disabled mappings may keep broken children: upstream skips child
+        # validation when enabled is false, and the GUI must still be able to
+        # disable a mapping that no longer loads.
         disabled = profile.load_mapping(config_dir, SERIAL)
         disabled["enabled"] = False
         disabled["children"]["broken_status"] = _build_child(
@@ -214,12 +271,49 @@ def main() -> None:
             },
             [{"sid": "status", "entities": ["binary_sensor.broken"]}],
         )
-        try:
-            profile.save_mapping(config_dir, SERIAL, disabled)
-        except profile.MappingError as error:
-            print(f"expected disabled validation failure: {error}")
-        else:
-            raise AssertionError("disabled mapping with broken children should fail")
+        profile.save_mapping(config_dir, SERIAL, disabled)
+        assert load_enabled_mapping(path) is None
+        assert profile.load_mapping(config_dir, SERIAL)["enabled"] is False
+
+        # Unsafe serials must never be turned into storage paths.
+        for bad_serial in ("..", "../../x", "lowercase"):
+            try:
+                profile.mapping_path(config_dir, bad_serial)
+            except profile.MappingError:
+                pass
+            else:
+                raise AssertionError(f"unsafe serial accepted: {bad_serial!r}")
+
+        # Filesystem failures are reported as MappingError, not raw OSError.
+        with tempfile.TemporaryDirectory() as blocked_dir:
+            blocker = Path(blocked_dir) / ".storage" / "oneconnect_bridge"
+            blocker.parent.mkdir(parents=True)
+            blocker.write_text("not a directory", encoding="utf-8")
+            blocked_mapping = mapping_ops.new_mapping(SERIAL)
+            mapping_ops.upsert_child(
+                blocked_mapping,
+                "probe",
+                _build_child(
+                    {
+                        "prod_id": "ZJ0V",
+                        "sub_prod_id": "",
+                        "device_type": "347",
+                        "manufacturer": "002",
+                        "model": "MAEXTRO-S800 Grand Design",
+                        "protocol_type": 1,
+                        "setup_type": 0,
+                        "known_fields_only": True,
+                        "services": [],
+                    },
+                    [],
+                ),
+            )
+            try:
+                profile.save_mapping(blocked_dir, SERIAL, blocked_mapping)
+            except profile.MappingError as error:
+                print(f"expected filesystem failure: {error}")
+            else:
+                raise AssertionError("OSError should be wrapped in MappingError")
 
         # Missing file yields a new document.
         missing = profile.load_mapping(config_dir, "AAAAAAAAAAAAAAAA")

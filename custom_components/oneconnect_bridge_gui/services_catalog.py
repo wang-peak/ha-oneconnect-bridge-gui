@@ -52,8 +52,8 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("light",),
         False,
         ("min", "max", "step"),
-        "按 Profile 的 min/max/step 配置色温量程，默认 0-100。",
-        {"min": 0, "max": 100, "step": 1},
+        "色温单位是 Kelvin；上游默认量程 2000-6500K，按 Profile 修改。",
+        {"min": 2000, "max": 6500, "step": 1},
     ),
     ServiceSpec(
         "colour",
@@ -118,7 +118,7 @@ _BASE: tuple[ServiceSpec, ...] = (
         ),
         False,
         ("commands", "states", "idle"),
-        "commands: 枚举值 → 角色（open/close/stop/on/off/start/pause/cancel/return_home）；cover 默认 0 关、1 开、2 停。",
+        "commands: 枚举值 → 角色（open/close/stop/on/off/start/pause/cancel/return_home）；cover 默认 0 关、1 开、2 停；开关类用 off/on，扫地机用 start/pause/cancel。",
         {"commands": {0: "close", 1: "open", 2: "stop"}},
     ),
     ServiceSpec(
@@ -128,7 +128,7 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("cover", "binary_sensor", "sensor"),
         False,
         ("states", "fallback"),
-        "states: HA 状态 → Profile 枚举值；fallback: 未命中时报的值；至少配置一项。",
+        "states: HA 状态 → Profile 枚举值；binary_sensor 常用 on/off，cover 用 open/closed；fallback: 未命中时报的值；至少配置一项。",
         {"states": {"on": 1, "off": 0}},
     ),
     ServiceSpec(
@@ -138,7 +138,7 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("sensor", "number", "input_number"),
         True,
         ("fields", "integers", "scales"),
-        "fields: 字段名列表，与实体按顺序一一对应；integers: 取整字段；scales: 字段 → 倍率。",
+        "fields（必填）: 字段名列表，与实体按顺序一一对应；integers: 取整字段；scales: 字段 → 倍率。例如 fields: [totalConsum, current, voltage]。",
     ),
     ServiceSpec(
         "airDetector",
@@ -196,12 +196,12 @@ _BASE: tuple[ServiceSpec, ...] = (
     ),
     ServiceSpec(
         "gasSensor",
-        "gasSensor",
+        "gas",
         "燃气",
         ("sensor",),
         True,
         (),
-        "绑定 1 个当前浓度 sensor，可再加 1 个等级 sensor；该服务不接受 contract。",
+        "项目内 st 固定为 gas；绑定 1 个当前浓度 sensor，可再加 1 个等级 sensor；该服务不接受 contract。",
     ),
     ServiceSpec(
         "cleanerRobot",
@@ -224,6 +224,23 @@ _ALIASES: tuple[ServiceSpec, ...] = (
 _ALL: tuple[ServiceSpec, ...] = _BASE + _ALIASES
 
 CATALOG: dict[str, ServiceSpec] = {spec.sid: spec for spec in _ALL}
+
+# Roles understood by the upstream ``action`` adapter for each entity domain.
+# Kept here so the flow can reject a domain/role mismatch before saving; the
+# upstream adapter remains the authority at runtime and still validates every
+# contract it loads.
+ACTION_ROLES_BY_DOMAIN: dict[str, frozenset[str]] = {
+    "cover": frozenset({"open", "close", "stop"}),
+    "valve": frozenset({"open", "close"}),
+    "switch": frozenset({"on", "off", "start", "pause", "cancel"}),
+    "light": frozenset({"on", "off", "start", "pause", "cancel"}),
+    "fan": frozenset({"on", "off", "start", "pause", "cancel"}),
+    "humidifier": frozenset({"on", "off", "start", "pause", "cancel"}),
+    "input_boolean": frozenset({"on", "off", "start", "pause", "cancel"}),
+    "vacuum": frozenset({"start", "pause", "cancel", "return_home"}),
+    "media_player": frozenset({"on", "off", "start", "pause", "cancel"}),
+    "climate": frozenset({"on", "off"}),
+}
 
 SERVICE_OPTIONS: list[dict[str, str]] = [
     {"value": spec.sid, "label": f"{spec.label}（{spec.sid}）"} for spec in _ALL
