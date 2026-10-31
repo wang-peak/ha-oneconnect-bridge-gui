@@ -1,0 +1,4 @@
+# Keep developer-only files out of GitHub source archives (and HACS downloads).
+tools/ export-ignore
+.github/ export-ignore
+dist/ export-ignore
