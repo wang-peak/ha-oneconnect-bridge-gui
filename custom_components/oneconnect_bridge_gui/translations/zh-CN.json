@@ -76,13 +76,16 @@
       },
       "edit_child": {
         "title": "编辑子设备",
-        "description": "选择要编辑的子设备。",
+        "description": "选择要编辑的子设备。列表显示「显示名称（key）· 房间」，没有填「显示名称」时只显示 key。\n\n想加中文名：选中后把「显示名称」填成中文并保存，下次列表就会带上它。",
         "data": {
           "child": "子设备"
+        },
+        "data_description": {
+          "child": "括号外是显示名称（华为智慧生活 App 里看到的名称），括号内是 mapping.yaml 里的 key；同名时用房间区分。"
         }
       },
       "edit_product": {
-        "title": "编辑子设备：产品身份与服务",
+        "title": "编辑子设备：{child}",
         "description": "只修改需要变的字段；保留选中的服务会沿用原实体绑定，下一步可以重新选择实体。",
         "data": {
           "prod_id": "产品 ID（prod_id）",
@@ -103,7 +106,7 @@
           "device_type": "华为设备类型，对应 Profile 的 deviceTypeId，例如 119。",
           "manufacturer": "厂商 ID，华为设备固定为 002。",
           "model": "设备型号，对应 Profile 的 deviceModel，例如 haTest10。",
-          "friendly_name": "显示在华为智慧生活 App 里的名称。",
+          "friendly_name": "显示在华为智慧生活 App 里的名称；也会显示在编辑/删除子设备的列表里，建议填中文。",
           "room": "显示在华为智慧生活 App 里的房间名，可留空。",
           "protocol_type": "对应 Profile 的 protocolType，常见为 6。",
           "setup_type": "对应 Profile 的 setupType，一般为 0。",
@@ -127,7 +130,7 @@
       },
       "delete_child": {
         "title": "删除子设备",
-        "description": "选择要删除的子设备。",
+        "description": "选择要删除的子设备。列表显示「显示名称（key）· 房间」，请核对清楚再删除。",
         "data": {
           "child": "子设备"
         }

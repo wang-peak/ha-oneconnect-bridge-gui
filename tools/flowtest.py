@@ -439,6 +439,16 @@ async def main() -> None:
         assert "bad" not in profile.load_mapping(temporary, SERIAL)["children"]
         print("invalid contract rejected: OK")
 
+        # Drop-down labels explain which device each key is.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        form = await flow.async_step_edit_child()
+        options = next(iter(form["schema"].schema.values())).config.kwargs["options"]
+        labels = {option["value"]: option["label"] for option in options}
+        assert labels["lamp"] == "灯泡（lamp） · 客厅", labels
+        assert labels["plug"] == "灯泡（plug） · 客厅", labels
+        print("child labels: OK")
+
         # Edit keeps unknown child keys and existing bindings.
         mapping = profile.load_mapping(temporary, SERIAL)
         mapping["children"]["lamp"]["x_note"] = "keep-me"
@@ -448,6 +458,7 @@ async def main() -> None:
         flow.hass = hass
         form = await flow.async_step_edit_child({"child": "lamp"})
         assert form["type"] == "form" and form["step_id"] == "edit_product", form
+        assert form["placeholders"]["child"] == "灯泡（lamp）", form
         form = await flow.async_step_edit_product(
             {
                 **BASE_PRODUCT,

@@ -83,6 +83,33 @@ def _entity_list(value: Any) -> list[str]:
     return []
 
 
+def _child_product(child: dict) -> dict:
+    product = child.get("product") if isinstance(child, dict) else None
+    return product if isinstance(product, dict) else {}
+
+
+def _child_identity(key: str, child: dict) -> str:
+    """Return ``显示名称（key）`` so the key is never hidden from the user."""
+
+    name = str(_child_product(child).get("friendly_name") or "").strip()
+    return f"{name}（{key}）" if name else key
+
+
+def _child_label(key: str, child: dict) -> str:
+    """Describe one child inside a select drop-down.
+
+    Home Assistant shows the option ``label`` but submits its ``value``, so the
+    mapping key still reaches the flow unchanged. The label stays short:
+    ``显示名称（key） · 房间``; without a display name the raw key is used.
+    """
+
+    if not isinstance(child, dict):
+        return key
+    room = str(_child_product(child).get("room") or "").strip()
+    label = _child_identity(key, child)
+    return f"{label} · {room}" if room else label
+
+
 def _dump_contract(contract: Any) -> str:
     if not contract:
         return ""
@@ -440,6 +467,7 @@ class OptionsFlow(config_entries.OptionsFlow):
         self._service_index = 0
         self._base_child: dict | None = None
         self._template_key: str = DEFAULT_TEMPLATE
+        self._child_identity: str = ""
 
     # -- helpers ---------------------------------------------------------
 
@@ -661,6 +689,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                 return await self._fail("选中的子设备不存在")
             self._key = key
             self._base_child = child
+            self._child_identity = _child_identity(key, child)
             self._services, self._service_values, self._service_st = (
                 _existing_services(child)
             )
@@ -672,7 +701,8 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Required("child"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=[
-                                {"value": key, "label": key} for key in children
+                                {"value": key, "label": _child_label(key, child)}
+                                for key, child in children.items()
                             ],
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
@@ -704,6 +734,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                         merged, include_key=False, service_options=self._service_options(extras)
                     ),
                     errors=errors,
+                    description_placeholders={"child": self._child_identity},
                 )
             selected = [
                 sid
@@ -728,6 +759,7 @@ class OptionsFlow(config_entries.OptionsFlow):
             data_schema=_product_schema(
                 defaults, include_key=False, service_options=self._service_options(extras)
             ),
+            description_placeholders={"child": self._child_identity},
         )
 
     # -- shared service loop ---------------------------------------------
@@ -850,7 +882,7 @@ class OptionsFlow(config_entries.OptionsFlow):
 
         applied, error = await self._apply()
         message = (
-            f"子设备 {self._key} 已写入：\n"
+            f"子设备 {self._child_identity or self._key} 已写入：\n"
             f"`{mapping_path(self._config_dir(), serial)}`"
         )
         if applied:
@@ -881,6 +913,8 @@ class OptionsFlow(config_entries.OptionsFlow):
             return await self.async_step_init()
         if user_input is not None:
             self._key = user_input.get("child")
+            child = children.get(self._key) if isinstance(self._key, str) else None
+            self._child_identity = _child_identity(self._key or "", child or {})
             return await self.async_step_delete_confirm()
         return self.async_show_form(
             step_id="delete_child",
@@ -889,7 +923,8 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Required("child"): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=[
-                                {"value": key, "label": key} for key in children
+                                {"value": key, "label": _child_label(key, child)}
+                                for key, child in children.items()
                             ],
                             mode=selector.SelectSelectorMode.DROPDOWN,
                         )
@@ -901,7 +936,7 @@ class OptionsFlow(config_entries.OptionsFlow):
     async def async_step_delete_confirm(self, user_input=None):
         if user_input is not None:
             if not user_input.get("confirm"):
-                self._notify("已取消", f"未删除子设备 {self._key}。")
+                self._notify("已取消", f"未删除子设备 {self._child_identity or self._key}。")
                 return await self.async_step_init()
             try:
                 mapping = await self._load()
@@ -909,13 +944,15 @@ class OptionsFlow(config_entries.OptionsFlow):
                 return await self._fail(str(error))
             removed = remove_child(mapping, self._key or "")
             if not removed:
-                return await self._fail(f"子设备 {self._key} 已不存在")
+                return await self._fail(f"子设备 {self._child_identity or self._key} 已不存在")
             try:
                 await self._save(mapping)
             except MappingError as error:
                 return await self._fail(f"保存失败：{error}")
             applied, error = await self._apply()
-            message = f"子设备 {self._key} 已从 mapping.yaml 移除。"
+            message = (
+                f"子设备 {self._child_identity or self._key} 已从 mapping.yaml 移除。"
+            )
             if applied:
                 message += "已触发重载，云端子设备会被同步删除。"
             else:
@@ -932,7 +969,9 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Required("confirm", default=False): selector.BooleanSelector()
                 }
             ),
-            description_placeholders={"child": str(self._key)},
+            description_placeholders={
+                "child": self._child_identity or str(self._key)
+            },
         )
 
     # -- raw YAML --------------------------------------------------------

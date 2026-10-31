@@ -51,7 +51,7 @@ HACS → 集成 → 右上角 ⋮ → 自定义存储库
 config/custom_components/oneconnect_bridge_gui/
 ```
 
-重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-0.2.6.zip`，解压到 `config/`。
+重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-0.2.7.zip`，解压到 `config/`。
 
 ## 使用
 
@@ -87,6 +87,26 @@ config/custom_components/oneconnect_bridge_gui/
 **第 2 步：产品身份与服务。** 模板值已带入，可按华为 Profile 修改；然后勾选要投影的服务。**HA 实体不在这一页**，提交后才会进入实体选择。
 
 **第 3 步起：逐个服务选 HA 实体。** 每个选中的服务单独一页，实体选择器只列出该服务允许的域（例如 `brightness` 只列 `light.*`，`mode`/`fan` 只列 `climate.*`）。**必须至少选择一个实体**，否则该服务无法提交。`contract` 可以留空，使用适配器默认值。
+
+### 子设备列表怎么认
+
+「编辑子设备」「删除子设备」的下拉列表显示：
+
+```text
+显示名称（key） · 房间
+```
+
+例如：
+
+```text
+客厅吸顶灯（living_room_lamp） · 客厅
+书房灯带（study_strip） · 书房
+device_1
+```
+
+- 显示名称来自 `product.friendly_name`（华为智慧生活 App 里看到的名称），房间来自 `product.room`；没填的部分就不显示。
+- 想给已有设备加中文名：编辑该子设备 → 在「显示名称」里填中文 → 保存。列表立刻带上它；只改显示名，key 和云端设备都不受影响。
+- 同名设备用房间区分；编辑页标题、删除确认和保存通知也会显示「名称（key）」，提交/删除前能再核对一次。
 
 ### 字段说明
 
