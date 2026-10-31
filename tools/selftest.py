@@ -38,7 +38,7 @@ from custom_components.oneconnect_bridge_gui.services_catalog import (
     get_spec,
 )
 
-SERIAL = "09E200A76943E0DF"
+SERIAL = "TEST000000000000"
 
 
 def _build_child(product: dict, bindings: list[dict]) -> dict:

@@ -196,7 +196,7 @@ from custom_components.oneconnect_bridge_gui import config_flow, profile, runtim
 from custom_components.oneconnect_bridge_gui.product_templates import template_defaults
 from custom_components.oneconnect_bridge_gui.services_catalog import get_spec
 
-SERIAL = "09E200A76943E0DF"
+SERIAL = "TEST000000000000"
 
 
 class FakeConfig:

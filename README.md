@@ -51,7 +51,7 @@ HACS → 集成 → 右上角 ⋮ → 自定义存储库
 config/custom_components/oneconnect_bridge_gui/
 ```
 
-重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-0.2.5.zip`，解压到 `config/`。
+重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-0.2.6.zip`，解压到 `config/`。
 
 ## 使用
 

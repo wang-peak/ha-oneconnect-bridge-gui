@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.6
+
+- 测试用网关序列号改为假值，不再公开真实设备标识。
+- `.gitattributes` 默认从源码归档排除 `tools/`、`.github/`、`dist/`；HACS 下载的源码不再包含测试脚本。
+- Release zip 补上 `LICENSE` 和 `NOTICE`，满足 Apache 2.0 分发要求。
+
 ## 0.2.5
 
 - 修复 9MU7 默认 cct contract 非法（0–100 → 2000–6500K），默认添加不再保存失败。
