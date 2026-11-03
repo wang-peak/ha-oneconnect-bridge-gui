@@ -21,10 +21,14 @@ def new_mapping(serial: str) -> dict:
 
 
 def validate_key(key: str) -> None:
-    """Reject child keys that upstream would treat as unsafe storage paths."""
+    """Reject new child keys that could clash with paths or tooling.
+
+    只约束**新建**的子设备标识（GUI 的 key 输入框）；已在 mapping.yaml 里的 key
+    原样允许编辑，避免手写/历史 key（例如含点号）无法通过图形界面修改。
+    """
 
     if not KEY_PATTERN.fullmatch(key):
-        raise ValueError("child key must match [A-Za-z0-9_-] and be 1-64 characters")
+        raise ValueError("子设备标识只能使用 1-64 位字母、数字、下划线或连字符")
 
 
 def build_child_entry(
@@ -49,15 +53,18 @@ def build_child_entry(
 def upsert_child(mapping: dict, key: str, child: dict) -> None:
     """Insert or replace one child, keeping the existing position on replace."""
 
-    validate_key(key)
+    if not isinstance(key, str) or not key:
+        raise ValueError("子设备标识不能为空")
     children = mapping.get("children")
     if children is None:
         children = {}
         mapping["children"] = children
     elif not isinstance(children, dict):
         raise ValueError("mapping.children 必须是键值对")
-    if key not in children and len(children) >= MAX_CHILDREN:
-        raise ValueError(f"a gateway supports at most {MAX_CHILDREN} children")
+    if key not in children:
+        validate_key(key)
+        if len(children) >= MAX_CHILDREN:
+            raise ValueError(f"一个网关最多支持 {MAX_CHILDREN} 个子设备")
     children[key] = child
 
 

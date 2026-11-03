@@ -118,7 +118,7 @@ _BASE: tuple[ServiceSpec, ...] = (
         ),
         False,
         ("commands", "states", "idle"),
-        "commands: 枚举值 → 角色（open/close/stop/on/off/start/pause/cancel/return_home）；cover 默认 0 关、1 开、2 停；开关类用 off/on，扫地机用 start/pause/cancel。",
+        "commands: 枚举值 → 角色（open/close/stop/on/off/start/pause/cancel/return_home）；cover 这里预填 0=关、1=开、2=停（窗帘类 Profile 的常见顺序），如果你的 Profile 是 0=开 1=关，请按 Profile 改；contract 留空时用上游默认 0=开、1=关、2=停。开关类用 off/on，扫地机用 start/pause/cancel。",
         {"commands": {0: "close", 1: "open", 2: "stop"}},
     ),
     ServiceSpec(
@@ -138,7 +138,13 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("sensor", "number", "input_number"),
         True,
         ("fields", "integers", "scales"),
-        "fields（必填）: 字段名列表，与实体按顺序一一对应；integers: 取整字段；scales: 字段 → 倍率。例如 fields: [totalConsum, current, voltage]。",
+        "fields（必填）：该产品 Profile 里 electric 服务的特性名，必须逐字一致。\n"
+        "顺序必须和「对应的 HA 实体」完全一致：第 1 个实体 → fields 第 1 项，"
+        "第 2 个实体 → fields 第 2 项，依此类推；数量也必须相同。\n"
+        "只上报部分字段：删掉 contract 里多余的字段，剩下的顺序保持不变。\n"
+        "integers：取整的字段；scales：字段 → 倍率。\n"
+        "9MTX 断路器：totalConsum=累计用电量、currentElectric1=电流、"
+        "currentVoltage1=电压、currentPower1=功率。",
     ),
     ServiceSpec(
         "airDetector",

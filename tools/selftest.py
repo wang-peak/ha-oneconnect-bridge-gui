@@ -15,7 +15,28 @@ import types
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-UPSTREAM = REPO.parent / "ha-oneconnect-bridge-main"
+
+
+def _find_upstream(repo: Path) -> Path:
+    """Locate the upstream integration next to this checkout.
+
+    Accepts both ``ha-oneconnect-bridge`` and a ``-main`` download folder.
+    This test needs the real upstream package, so a missing directory fails
+    loudly instead of silently skipping the contract checks.
+    """
+
+    marker = Path("custom_components") / "oneconnect_bridge" / "business" / "mapping_config.py"
+    for name in ("ha-oneconnect-bridge", "ha-oneconnect-bridge-main"):
+        candidate = repo.parent / name
+        if (candidate / marker).is_file():
+            return candidate
+    raise SystemExit(
+        "找不到上游 ha-oneconnect-bridge：请把 GUI 目录和上游目录放在同一层，"
+        "或把上游目录命名为 ha-oneconnect-bridge / ha-oneconnect-bridge-main。"
+    )
+
+
+UPSTREAM = _find_upstream(REPO)
 for candidate in (str(REPO), str(UPSTREAM)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)

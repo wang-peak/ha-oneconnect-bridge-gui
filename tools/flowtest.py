@@ -17,7 +17,25 @@ import types
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-UPSTREAM = REPO.parent / "ha-oneconnect-bridge-main"
+
+
+def _find_upstream(repo: Path) -> Path:
+    """Locate the upstream integration next to this checkout.
+
+    Accepts both ``ha-oneconnect-bridge`` and a ``-main`` download folder. If
+    neither exists the tests still run, but contract validation falls back to
+    the weaker local checks in ``profile.py``.
+    """
+
+    marker = Path("custom_components") / "oneconnect_bridge" / "business" / "mapping_config.py"
+    for name in ("ha-oneconnect-bridge", "ha-oneconnect-bridge-main"):
+        candidate = repo.parent / name
+        if (candidate / marker).is_file():
+            return candidate
+    return repo.parent / "ha-oneconnect-bridge"
+
+
+UPSTREAM = _find_upstream(REPO)
 for candidate in (str(REPO), str(UPSTREAM)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
@@ -431,13 +449,31 @@ async def main() -> None:
         result = await flow.async_step_service(
             {"st": "status", "entities": "binary_sensor.x", "contract": "states: {}"}
         )
-        assert result["type"] == "menu", result
+        assert result["type"] == "form", result
+        assert result["errors"].get("contract") == "status_mapping_required", result
         assert profile.mapping_path(temporary, SERIAL).read_text(encoding="utf-8") == before
-        assert any("status contract needs fallback" in message for _, message in NOTIFICATIONS), (
-            NOTIFICATIONS
-        )
         assert "bad" not in profile.load_mapping(temporary, SERIAL)["children"]
         print("invalid contract rejected: OK")
+
+        # status 的上游规则是 states 与 fallback 至少一项，states 可以为空。
+        domain_error = config_flow._contract_domain_error
+        assert domain_error("status", ["binary_sensor.x"], {}) == "status_mapping_required"
+        assert domain_error("status", ["binary_sensor.x"], {"fallback": 0}) is None
+        assert domain_error("status", ["binary_sensor.x"], {"states": {}, "fallback": 0}) is None
+        assert domain_error("status", ["binary_sensor.x"], {"states": {"on": 1}}) is None
+        assert (
+            domain_error("status", ["binary_sensor.x"], {"states": {"on": "1"}})
+            == "status_states_invalid"
+        )
+        assert (
+            domain_error("status", ["binary_sensor.x"], {"states": [1, 2]})
+            == "status_states_invalid"
+        )
+        assert (
+            domain_error("status", ["binary_sensor.x"], {"fallback": "0"})
+            == "status_fallback_invalid"
+        )
+        print("status contract rules: OK")
 
         # Drop-down labels explain which device each key is.
         flow = config_flow.OptionsFlow(gui)
@@ -483,6 +519,69 @@ async def main() -> None:
         assert mapping["children"]["lamp"]["x_note"] == "keep-me"
         assert mapping["children"]["lamp"]["bindings"][1]["entities"] == ["light.lamp"]
         print("edit preserves extra keys: OK")
+
+        # Clearing the optional name/room removes them instead of keeping old values.
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        await flow.async_step_edit_child({"child": "lamp"})
+        form = await flow.async_step_edit_product(
+            {
+                **BASE_PRODUCT,
+                "key": "lamp",
+                "friendly_name": "",
+                "room": "",
+                "services": ["switch"],
+            }
+        )
+        assert form["type"] == "form" and form["step_id"] == "service", form
+        form = await flow.async_step_service(
+            {"st": "switch", "entities": "light.lamp", "contract": ""}
+        )
+        assert form["type"] == "menu", form
+        product = profile.load_mapping(temporary, SERIAL)["children"]["lamp"]["product"]
+        assert "friendly_name" not in product and "room" not in product, product
+        assert product["services"] == [{"st": "switch", "sid": "switch"}], product
+        print("clearing optional fields: OK")
+
+        # 手写/历史 key（含点号）允许通过 GUI 编辑，不会被 key 规则卡死。
+        dotted = profile.load_mapping(temporary, SERIAL)
+        dotted["children"]["dotted.key"] = dotted["children"]["lamp"]
+        profile.save_mapping(temporary, SERIAL, dotted)
+        flow = config_flow.OptionsFlow(gui)
+        flow.hass = hass
+        form = await flow.async_step_edit_child({"child": "dotted.key"})
+        assert form["type"] == "form" and form["step_id"] == "edit_product", form
+        result = await flow.async_step_edit_product(
+            {
+                **BASE_PRODUCT,
+                "key": "dotted.key",
+                "friendly_name": "点号子设备",
+                "services": [],
+            }
+        )
+        assert result["type"] == "menu", result
+        assert "dotted.key" in profile.load_mapping(temporary, SERIAL)["children"]
+        print("edit non-standard key: OK")
+
+        # 新建 key 的格式与 64 上限都给出中文提示。
+        import custom_components.oneconnect_bridge_gui.mapping_ops as mapping_ops
+
+        limit_mapping = mapping_ops.new_mapping(SERIAL)
+        for index in range(64):
+            mapping_ops.upsert_child(limit_mapping, f"child_{index}", {})
+        try:
+            mapping_ops.upsert_child(limit_mapping, "overflow", {})
+        except ValueError as error:
+            assert "64" in str(error) and "最多" in str(error), error
+        else:
+            raise AssertionError("a 65th child must be rejected")
+        try:
+            mapping_ops.upsert_child(limit_mapping, "bad.key", {})
+        except ValueError as error:
+            assert "子设备标识" in str(error), error
+        else:
+            raise AssertionError("a new key with a dot must be rejected")
+        print("child key rules: OK")
 
         # Delete with confirmation.
         flow = config_flow.OptionsFlow(gui)
@@ -717,10 +816,14 @@ async def main() -> None:
         result = await flow.async_step_settings({"enabled": False})
         assert result["type"] == "menu", result
         assert profile.load_mapping(temporary, SERIAL)["enabled"] is False
-        # ...but re-enabling it must still fail validation.
+        # 重新启用这份损坏映射：装了上游时 load_enabled_mapping 会拒绝，
+        # 只有 GUI 自己的弱校验时才会通过。
         result = await flow.async_step_settings({"enabled": True})
         assert result["type"] == "menu", result
-        assert profile.load_mapping(temporary, SERIAL)["enabled"] is False
+        if profile._upstream_loader() is not None:
+            assert profile.load_mapping(temporary, SERIAL)["enabled"] is False
+        else:
+            assert profile.load_mapping(temporary, SERIAL)["enabled"] is True
         print("disable broken mapping: OK")
 
         # The fallback entry reload must surface a False result as a failure.

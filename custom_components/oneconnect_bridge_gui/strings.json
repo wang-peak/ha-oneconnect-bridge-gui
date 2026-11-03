@@ -12,6 +12,7 @@
     "abort": {
       "no_gateway": "没有找到 OneConnect Bridge 网关，请先添加网关。",
       "all_configured": "所有 OneConnect Bridge 网关都已添加图形配置。",
+      "already_configured": "该网关已经添加过图形配置，请勿重复添加。",
       "invalid_gateway": "OneConnect Bridge 网关的序列号缺失或包含不支持的字符，请先检查上游集成。"
     },
     "error": {
@@ -125,7 +126,7 @@
         "data_description": {
           "st": "服务类型，默认按 sid 自动匹配；只有 Profile 明确要求时才改，例如 switch 改成 binarySwitch。",
           "entities": "选择这个服务对应的 Home Assistant 实体，必填；按服务要求可多选。",
-          "contract": "可选。按 Profile 覆盖枚举、量程或字段名；留空使用适配器默认值。支持 YAML 或 JSON。"
+          "contract": "可选。按 Profile 覆盖枚举、量程或字段名；有 fields 时顺序必须与上面实体顺序一致。留空使用适配器默认值。支持 YAML 或 JSON。"
         }
       },
       "delete_child": {
@@ -166,10 +167,16 @@
       "contract_bool_key": "contract 里的 on/off/yes/no 被 YAML 当成了布尔值；请给键或值加引号，例如 'on': 1 或 0: 'off'。",
       "action_commands_required": "action 绑定非 cover 实体时必须显式配置 commands，例如开关类 0=off、1=on；扫地机 0=pause、1=start、2=cancel。",
       "action_roles_invalid": "contract.commands 的角色不适用于所选实体域；cover 用 open/close/stop，开关类用 on/off，扫地机用 start/pause/cancel。",
-      "electric_fields_required": "electric 必须在 contract 中配置非空的 fields，例如 fields: [totalConsum, current, voltage]。",
+      "electric_fields_required": "electric 必须在 contract 里配置 fields：字段名用该产品 Profile 的特性名，数量与顺序都必须和上面选的实体一致。9MTX 依次是 totalConsum（累计用电量）、currentElectric1（电流）、currentVoltage1（电压）、currentPower1（功率）。",
+      "electric_fields_entities_mismatch": "electric 的 fields 数量必须等于绑定实体数，且顺序一一对应：第 1 个实体 → fields 第 1 项，第 2 个 → 第 2 项，依此类推。只上报部分字段时，请删掉多余的字段并保持剩余顺序；上游在数量不一致时只告警并跳过上报。",
       "status_cover_default": "cover 的状态是 open/closed，不是 on/off；请按 Profile 修改 states，例如 closed=1、open=2。",
+      "status_mapping_required": "status 需要 states 或 fallback 至少配置一项；states 可以是空映射，例如 states: {} 加 fallback: 0。",
+      "status_states_invalid": "status 的 states 必须是「HA 状态 -> 整数」的映射，键要用引号（如 'on': 1），值必须是整数。",
+      "status_fallback_invalid": "status 的 fallback 必须是整数。",
       "yaml_invalid": "内容不是有效的 YAML 映射。",
-      "entities_required": "请至少选择一个 HA 实体。"
+      "entities_required": "请至少选择一个 HA 实体。",
+      "air_detector_entities_required": "airDetector 必须绑定两个不同的 sensor 实体（温度、湿度各一个）。",
+      "gas_sensor_entities_required": "gasSensor 需要 1 个当前浓度 sensor，最多再加 1 个不同实体的等级 sensor。"
     },
     "abort": {
       "gateway_missing": "OneConnect Bridge 网关条目已不存在。",

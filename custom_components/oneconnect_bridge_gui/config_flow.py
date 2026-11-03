@@ -23,6 +23,10 @@ from .product_templates import (
     DEFAULT_TEMPLATE,
     TEMPLATE_MAP,
     TEMPLATE_OPTIONS,
+    contract_note_for_prod_id,
+    contracts_for_prod_id,
+    template_contract_note,
+    template_contracts,
     template_defaults,
 )
 from .profile import (
@@ -182,10 +186,41 @@ def _contract_domain_error(sid: str, entities: list[str], contract: dict) -> str
         fields = contract.get("fields")
         if not isinstance(fields, list) or not fields:
             return "electric_fields_required"
+        if len(fields) != len({entity for entity in entities if entity}):
+            # 上游对数量不一致只告警一次并跳过上报，界面上不拦就会「填了没数据」。
+            return "electric_fields_entities_mismatch"
         return None
-    if sid == "status" and _entity_domain(entities) == "cover":
+    if sid == "airDetector":
+        if len(set(entities)) != 2:
+            return "air_detector_entities_required"
+        return None
+    if sid == "gasSensor":
+        if not 1 <= len(set(entities)) <= 2:
+            return "gas_sensor_entities_required"
+        return None
+    if sid == "status":
         states = contract.get("states")
-        if isinstance(states, dict) and set(states) == {"on", "off"}:
+        fallback = contract.get("fallback")
+        if states is not None and not isinstance(states, dict):
+            return "status_states_invalid"
+        if isinstance(states, dict) and any(
+            not isinstance(key, str) or not key for key in states
+        ):
+            return "status_states_invalid"
+        if isinstance(states, dict) and any(
+            isinstance(value, bool) or not isinstance(value, int)
+            for value in states.values()
+        ):
+            return "status_states_invalid"
+        if fallback is not None and (
+            isinstance(fallback, bool) or not isinstance(fallback, int)
+        ):
+            return "status_fallback_invalid"
+        # 上游规则：states 与 fallback 至少配置一项，states 可以是空映射
+        # （21DA 这类设备只靠 fallback 恒报一个值）。
+        if not states and fallback is None:
+            return "status_mapping_required"
+        if _entity_domain(entities) == "cover" and states and set(states) == {"on", "off"}:
             return "status_cover_default"
     return None
 
@@ -468,6 +503,7 @@ class OptionsFlow(config_entries.OptionsFlow):
         self._base_child: dict | None = None
         self._template_key: str = DEFAULT_TEMPLATE
         self._child_identity: str = ""
+        self._preset_contracts: dict[str, dict] = {}
 
     # -- helpers ---------------------------------------------------------
 
@@ -588,6 +624,7 @@ class OptionsFlow(config_entries.OptionsFlow):
     async def async_step_add_child(self, user_input=None):
         """Step 1: pick a product template so the next form is prefilled."""
 
+        self._preset_contracts = {}
         if user_input is not None:
             template = user_input.get("template")
             self._template_key = (
@@ -640,13 +677,20 @@ class OptionsFlow(config_entries.OptionsFlow):
                 elif key in self._children(mapping):
                     errors["key"] = "duplicate_key"
             if not errors and mapping is not None:
+                presets = template_contracts(self._template_key)
+                self._preset_contracts = {
+                    sid: dict(presets[sid]) for sid in services if sid in presets
+                }
                 self._start_service_selection(
                     mode="add",
                     key=key,
                     product=product,
                     base_child=None,
                     services=services,
-                    values={},
+                    values={
+                        sid: {"entities": [], "contract": dict(preset)}
+                        for sid, preset in self._preset_contracts.items()
+                    },
                     service_types={},
                 )
                 return await self.async_step_service()
@@ -775,6 +819,9 @@ class OptionsFlow(config_entries.OptionsFlow):
         values: dict[str, dict],
         service_types: dict[str, str],
     ) -> None:
+        if mode != "add":
+            # 编辑已有子设备时不沿用「新增模板」的预设，避免提示与实际 contract 不一致
+            self._preset_contracts = {}
         self._mode = mode
         self._key = key
         self._product = product
@@ -789,6 +836,21 @@ class OptionsFlow(config_entries.OptionsFlow):
             return await self._finish()
         sid = self._services[self._service_index]
         spec = get_spec(sid)
+        prod_id = str((self._product or {}).get("prod_id") or "")
+        from_preset = sid in self._preset_contracts
+        preset = self._preset_contracts.get(sid) or contracts_for_prod_id(prod_id).get(sid) or {}
+        hint = spec.contract_hint or "该服务没有可配置的 contract，留空即可。"
+        if preset:
+            note = (
+                template_contract_note(self._template_key, sid)
+                if from_preset
+                else contract_note_for_prod_id(prod_id, sid)
+            )
+            hint += "\n\n" + (
+                note
+                or "当前产品模板已按 Profile 预填 contract：fields 必须与绑定的实体"
+                "按顺序一一对应；只上报一部分时，把多出来的字段删掉。"
+            )
         existing = self._service_values.get(sid) or {}
         errors: dict[str, str] = {}
         contract_text: str | None = None
@@ -819,9 +881,11 @@ class OptionsFlow(config_entries.OptionsFlow):
                 self._service_index += 1
                 return await self.async_step_service()
         if contract_text is None:
-            contract_text = _dump_contract(
-                existing.get("contract", spec.contract_template)
-            )
+            saved = existing.get("contract")
+            if not saved and preset:
+                # 旧映射里的电表类服务常常是空 contract：按产品模板把字段补上
+                saved = preset
+            contract_text = _dump_contract(saved or spec.contract_template)
         return self.async_show_form(
             step_id="service",
             data_schema=_service_schema(spec, entities, contract_text, service_type),
@@ -831,7 +895,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                 "sid": sid,
                 "index": str(self._service_index + 1),
                 "total": str(len(self._services)),
-                "hint": spec.contract_hint or "该服务没有可配置的 contract，留空即可。",
+                "hint": hint,
             },
         )
 
@@ -870,6 +934,13 @@ class OptionsFlow(config_entries.OptionsFlow):
                 product.pop(optional, None)
 
         child = build_child_entry(self._base_child, product=product, bindings=bindings)
+        # build_child_entry 会把新值合并进旧 product：用户清空的「显示名称/房间」
+        # 不在 product 里，合并后旧值会被保留。这里显式删掉，保证清空真的生效。
+        merged_product = child.get("product")
+        if isinstance(merged_product, dict):
+            for optional in OPTIONAL_PRODUCT_FIELDS:
+                if optional not in product:
+                    merged_product.pop(optional, None)
         try:
             upsert_child(mapping, self._key, child)
         except ValueError as error:

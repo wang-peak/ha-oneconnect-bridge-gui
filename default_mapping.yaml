@@ -1,0 +1,340 @@
+# 默认配置会注册一个智控灯泡；请将下方 HA 实体占位符替换为实际实体。
+# 尊界S800模型示例已注释，如需使用请取消对应注释。
+
+schema: 1
+enabled: true
+gateway_serial: ""
+
+children:
+  # oneconnect_link_probe:
+  #   product:
+  #     prod_id: ZJ0V
+  #     sub_prod_id: ""
+  #     device_type: "347"
+  #     manufacturer: "002"
+  #     model: "MAEXTRO-S800 Grand Design"
+  #     friendly_name: "尊界S800 Grand Design"
+  #     protocol_type: 1
+  #     setup_type: 0
+  #     known_fields_only: true
+  #     services: []
+
+  # 以下子设备都是华为专为Home Assistant构建的专属物模型，你可以取消注释并修改对应的HA实体进行投影
+  # 如果你需要投影更多华为设备，那么只需要复制对应的条目替换实体即可
+  # 如果您需要自定义物模型那么您需要从华为Iot资料库找到对应的prodid自定包装注册设备信息。对于出现15013云端拒绝普遍都是产品设备信息包装错误。
+  # 对于HA实体和华为服务不对等的情况您可以进行自定义覆盖。
+
+  color_bulb_9mu7:
+    product:
+      prod_id: 9MU7
+      sub_prod_id: "00"
+      device_type: "119"
+      manufacturer: "002"
+      model: haTest10
+      friendly_name: 智控灯泡
+      room: 客厅
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+        - st: brightness
+          sid: brightness
+          contract:
+            min: 1
+            max: 100
+            step: 1
+        - st: cct
+          sid: cct
+    bindings:
+      - sid: switch
+        entities: [light.REPLACE_WITH_COLOR_BULB]
+      - sid: brightness
+        entities: [light.REPLACE_WITH_COLOR_BULB]
+      - sid: cct
+        entities: [light.REPLACE_WITH_COLOR_BULB]
+
+  # 智控断路器（9MTX）。该 Profile 的 electric 服务为四个 float 字段，
+  # step 0.01，因此不能声明到 integers，否则小数会被四舍五入成 0。
+  # fields 的顺序必须与下面 bindings 里实体的顺序一致。
+  circuit_breaker_9mtx:
+    product:
+      prod_id: 9MTX
+      sub_prod_id: "00"
+      device_type: "211"
+      manufacturer: "002"
+      model: haTest8
+      friendly_name: 智控断路器
+      room: 配电箱
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+        - st: electric
+          sid: electric
+          contract:
+            fields: [totalConsum, currentElectric1, currentVoltage1, currentPower1]
+    bindings:
+      - sid: switch
+        entities: [switch.REPLACE_WITH_CIRCUIT_BREAKER]
+      - sid: electric
+        entities:
+          - sensor.REPLACE_WITH_BREAKER_TOTAL_CONSUMPTION
+          - sensor.REPLACE_WITH_BREAKER_CURRENT
+          - sensor.REPLACE_WITH_BREAKER_VOLTAGE
+          - sensor.REPLACE_WITH_BREAKER_POWER
+
+  # 智控夜灯（9MTJ）。status 服务的语义是「有无人」而不是开关，
+  # 所以它绑定 binary_sensor：on=有人(1)，off=无人(0)。
+  night_light_9mtj:
+    product:
+      prod_id: 9MTJ
+      sub_prod_id: "00"
+      device_type: "21F"
+      manufacturer: "002"
+      model: haTest1
+      friendly_name: 智控夜灯
+      room: 卧室
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+        - st: brightness
+          sid: brightness
+          contract:
+            min: 1
+            max: 100
+            step: 1
+        - st: cct
+          sid: cct
+        - st: status
+          sid: status
+          contract:
+            states:
+              "on": 1
+              "off": 0
+    bindings:
+      - sid: switch
+        entities: [light.REPLACE_WITH_NIGHT_LIGHT]
+      - sid: brightness
+        entities: [light.REPLACE_WITH_NIGHT_LIGHT]
+      - sid: cct
+        entities: [light.REPLACE_WITH_NIGHT_LIGHT]
+      - sid: status
+        entities: [binary_sensor.REPLACE_WITH_NIGHT_LIGHT_PRESENCE]
+
+  # 智控床头灯（9MTL）。只有开关、亮度、色温三个服务。
+  bedside_lamp_9mtl:
+    product:
+      prod_id: 9MTL
+      sub_prod_id: "00"
+      device_type: "10E"
+      manufacturer: "002"
+      model: haTest2
+      friendly_name: 智控床头灯
+      room: 卧室
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+        - st: brightness
+          sid: brightness
+          contract:
+            min: 1
+            max: 100
+            step: 1
+        - st: cct
+          sid: cct
+    bindings:
+      - sid: switch
+        entities: [light.REPLACE_WITH_BEDSIDE_LAMP]
+      - sid: brightness
+        entities: [light.REPLACE_WITH_BEDSIDE_LAMP]
+      - sid: cct
+        entities: [light.REPLACE_WITH_BEDSIDE_LAMP]
+
+  # 智控压力传感器（9MTM）。Profile 里的 serviceId 是 alarmBell，serviceType 是
+  # mode；上游目前没有 alarmBell 适配器，写进 services 会让整份映射被拒绝，
+  # 所以只注册设备、不投影服务。等上游实现后再补 services/bindings。
+  pressure_sensor_9mtm:
+    product:
+      prod_id: 9MTM
+      sub_prod_id: "00"
+      device_type: "1F1"
+      manufacturer: "002"
+      model: haTest4
+      friendly_name: 智控压力传感器
+      room: 阳台
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services: []
+
+  # 智控水壶（9MTR）。注意 mode 适配器只接受 climate 实体，
+  # 水壶没有 climate 语义，这里用 climate 承载「工作模式」读写。
+  # temperature 的三个特性（preserveTarget/current/heatingTarget）只投影其中两个。
+  kettle_9mtr:
+    product:
+      prod_id: 9MTR
+      sub_prod_id: "00"
+      device_type: "09A"
+      manufacturer: "002"
+      model: haTest5
+      friendly_name: 智控水壶
+      room: 厨房
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+        - st: mode
+          sid: mode
+          contract:
+            values:
+              heat: 1
+              cool: 2
+        - st: temperature
+          sid: temperature
+          contract:
+            field: current
+            target_field: preserveTarget
+    bindings:
+      - sid: switch
+        entities: [switch.REPLACE_WITH_KETTLE]
+      - sid: mode
+        entities: [climate.REPLACE_WITH_KETTLE]
+      - sid: temperature
+        entities: [sensor.REPLACE_WITH_KETTLE_TEMPERATURE]
+
+  # 智控灭蚊器（9MTV）。Profile 的 delay（定时）服务尚无适配器，
+  # 因此这里只投影开关；需要倒计时功能时再补适配器。
+  mosquito_repellent_9mtv:
+    product:
+      prod_id: 9MTV
+      sub_prod_id: "00"
+      device_type: "0B0"
+      manufacturer: "002"
+      model: haTest6
+      friendly_name: 智控灭蚊器
+      room: 卧室
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+    bindings:
+      - sid: switch
+        entities: [switch.REPLACE_WITH_REPELLENT]
+
+  # 智控电饭煲（9MTW）。Profile 的 cooker（烹饪模式）、leftTime（剩余时间）、
+  # status（工作状态）尚无适配器，这里只投影开关与 action 工作命令。
+  # action 的枚举为 0=暂停 1=开始 2=取消，绑定 switch 实体。
+  rice_cooker_9mtw:
+    product:
+      prod_id: 9MTW
+      sub_prod_id: "00"
+      device_type: "026"
+      manufacturer: "002"
+      model: haTest7
+      friendly_name: 智控电饭煲
+      room: 厨房
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+        - st: action
+          sid: action
+          contract:
+            commands:
+              0: pause
+              1: start
+              2: cancel
+    bindings:
+      - sid: switch
+        entities: [switch.REPLACE_WITH_RICE_COOKER]
+      - sid: action
+        entities: [switch.REPLACE_WITH_RICE_COOKER]
+
+  air_conditioner_9mxo:
+    product:
+      prod_id: 9MXO
+      sub_prod_id: "00"
+      device_type: "012"
+      manufacturer: "002"
+      model: test20
+      friendly_name: 智控空调
+      room: 客厅
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: switch
+          sid: switch
+          contract:
+            on_mode: cool
+        - st: mode
+          sid: mode
+          contract:
+            values:
+              cool: 2
+              heat: 3
+              fan_only: 4
+        - st: temperature
+          sid: temperature
+        - st: fan
+          sid: fan
+          contract:
+            gear_values:
+              auto: 0
+              low: 1
+              medium: 2
+              high: 3
+            direction_enabled: false
+    bindings:
+      - sid: switch
+        entities: [climate.REPLACE_WITH_AIR_CONDITIONER]
+      - sid: mode
+        entities: [climate.REPLACE_WITH_AIR_CONDITIONER]
+      - sid: temperature
+        entities: [climate.REPLACE_WITH_AIR_CONDITIONER]
+      - sid: fan
+        entities: [climate.REPLACE_WITH_AIR_CONDITIONER]
+
+  curtain_9my5:
+    product:
+      prod_id: 9MY5
+      sub_prod_id: "00"
+      device_type: "01C"
+      manufacturer: "002"
+      model: haTest23
+      friendly_name: 智控窗帘
+      room: 客厅
+      protocol_type: 6
+      setup_type: 0
+      known_fields_only: false
+      services:
+        - st: action
+          sid: leftAction
+          contract:
+            commands:
+              0: close
+              1: open
+              2: stop
+        - st: opener
+          sid: opener
+    bindings:
+      - sid: leftAction
+        entities: [cover.REPLACE_WITH_CURTAIN]
+      - sid: opener
+        entities: [cover.REPLACE_WITH_CURTAIN]

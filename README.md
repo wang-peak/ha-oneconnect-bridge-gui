@@ -8,7 +8,7 @@
 
 ## 功能
 
-- **产品模板**：9MU7 智控灯泡、9MXO 智控空调、9MY5 智控窗帘、ZJ0V 探针，选中后自动填好华为产品参数。
+- **产品模板**：9MU7 智控灯泡、9MTJ 智控夜灯、9MTL 智控床头灯、9MTM 智控压力传感器、9MTR 智控水壶、9MTV 智控灭蚊器、9MTW 智控电饭煲、9MTX 智控断路器、9MXO 智控空调、9MY5 智控窗帘、ZJ0V 探针，选中后自动填好华为产品参数。
 - **子设备管理**：添加、编辑、删除，支持查看和直接编辑 YAML。
 - **实体绑定**：每个华为服务单独一页选择 HA 实体，实体选择器按服务过滤域。
 - **contract 覆盖**：按 Profile 调整枚举、量程、字段名，支持 YAML 和 JSON。
@@ -51,7 +51,7 @@ HACS → 集成 → 右上角 ⋮ → 自定义存储库
 config/custom_components/oneconnect_bridge_gui/
 ```
 
-重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-0.2.7.zip`，解压到 `config/`。
+重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-<版本号>.zip`，解压到 `config/`。
 
 ## 使用
 
@@ -79,6 +79,13 @@ config/custom_components/oneconnect_bridge_gui/
 | 模板 | prod_id | device_type | model | 默认服务 |
 | --- | --- | --- | --- | --- |
 | 智控灯泡（9MU7） | 9MU7 | 119 | haTest10 | switch / brightness / cct |
+| 智控夜灯（9MTJ） | 9MTJ | 21F | haTest1 | switch / brightness / cct / status |
+| 智控床头灯（9MTL） | 9MTL | 10E | haTest2 | switch / brightness / cct |
+| 智控压力传感器（9MTM） | 9MTM | 1F1 | haTest4 | 无（上游暂无 alarmBell 适配器，只注册设备） |
+| 智控水壶（9MTR） | 9MTR | 09A | haTest5 | switch / mode / temperature |
+| 智控灭蚊器（9MTV） | 9MTV | 0B0 | haTest6 | switch |
+| 智控电饭煲（9MTW） | 9MTW | 026 | haTest7 | switch / action |
+| 智控断路器（9MTX） | 9MTX | 211 | haTest8 | switch / electric |
 | 智控空调（9MXO） | 9MXO | 012 | test20 | switch / mode / temperature / fan |
 | 智控窗帘（9MY5） | 9MY5 | 01C | haTest23 | leftAction / opener |
 | 探针：尊界S800（ZJ0V） | ZJ0V | 347 | MAEXTRO-S800 Grand Design | 无（只验证网关） |
@@ -188,6 +195,8 @@ fallback: 0
 
 `action` 的 `commands` 角色必须匹配实体域：cover 用 `open/close/stop`，开关类用 `on/off`，扫地机用 `start/pause/cancel`；`status` 绑定 cover 时 `states` 用 `open/closed`（不是 `on/off`）。GUI 会在提交服务页时校验这些组合。
 
+`action` 的表单会预填 `0=关 1=开 2=停`（窗帘类 Profile 的常见顺序，9MY5 即如此）；如果设备 Profile 是 `0=开 1=关`，请按 Profile 改掉预填值。contract 留空时上游按自己的默认 `0=开 1=关 2=停` 处理。
+
 YAML 里 `on` / `off` / `yes` / `no` 作为键或 `commands`/`states` 的值时必须加引号（如 `'on': 1`、`0: 'off'`），否则会被 YAML 解析成布尔值；GUI 会给出明确错误。
 
 ### 自定义产品参数去哪查
@@ -235,24 +244,6 @@ Profile 字段对应关系：
 ## 卸载
 
 删除 OneConnect Bridge GUI 的配置条目即可，不会删除 `mapping.yaml` 或云端设备。要彻底清理，请删除对应的 OneConnect Bridge 网关（上游会先删云端子设备再删本地数据）。
-
-## 开发与自测
-
-`tools/selftest.py` 直接调用上游 `business.mapping_config`（该包不依赖 Home Assistant）验证：
-
-```bash
-python tools/selftest.py
-```
-
-覆盖：写入子设备、上游真实解析、整数键 contract 往返、备份、非法 contract 拒绝、cct/gasSensor 默认值、停用损坏映射、serial 校验、文件系统错误包装。
-
-`tools/flowtest.py` 用最小 HA 桩跑完整的选项流状态机：
-
-```bash
-python tools/flowtest.py
-```
-
-覆盖：添加子设备、重复 key、`st` 覆盖、非法 contract 不落盘、编辑保留未知字段、删除确认、直接编辑 YAML、启停开关、9MU7 默认 cct、gasSensor、electric、action/status 域校验、YAML 布尔键、零服务子设备、停用损坏映射、重载失败。
 
 ## 许可
 
