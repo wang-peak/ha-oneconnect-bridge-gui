@@ -35,7 +35,7 @@
       },
       "add_child": {
         "title": "添加子设备（1/2）：选择产品模板",
-        "description": "先选产品模板，下一页会自动填好华为产品参数；没有对应模板时选「自定义」。\n\n自定义需要查华为 IoT 资料库：\n[全量目录](https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json)（按产品名或 DeviceId 搜索）\n[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成你的产品 ID）\n\nProfile 中：DeviceId → prod_id，deviceTypeId → device_type，deviceModel → model。",
+        "description": "先选产品模板，下一页会自动填好华为产品参数；没有对应模板时选「自定义」，会先进入 Profile 粘贴页，自动识别产品参数和服务。\n\n华为 IoT 资料库：\n[全量目录](https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json)（按产品名或 DeviceId 搜索）\n[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成你的产品 ID）\n[华为 IoT 产品库](https://hispec.dxdgo.com)（按产品名查规格和 Profile）\n\nProfile 中：DeviceId → prod_id，deviceTypeId → device_type，deviceModel → model。",
         "data": {
           "template": "产品模板"
         },
@@ -43,9 +43,19 @@
           "template": "9MU7 / 9MXO / 9MY5 是华为为 Home Assistant 提供的预置物模型；ZJ0V 是验证网关用的探针，不要用于正式设备。"
         }
       },
+      "profile": {
+        "title": "添加子设备（1/2）：粘贴设备 Profile",
+        "description": "把华为设备的 Profile JSON 整段粘贴到下面，提交后会自动识别 prod_id、device_type、manufacturer、model、protocol_type 和服务，并在下一页预填。\n\nProfile 从产品资料库打开：\n[全量目录](https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json)（按产品名或 DeviceId 搜索）\n[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成你的产品 ID）\n\n留空提交则直接手动填写。\n\n{error}",
+        "data": {
+          "profile": "设备 Profile JSON"
+        },
+        "data_description": {
+          "profile": "整段 JSON（从开头的左大括号到结尾的右大括号），格式化或压缩成一行都可以；只支持单品 Profile，不支持全量目录 mainHelp.json。"
+        }
+      },
       "add_product": {
         "title": "添加子设备（2/2）：产品身份与服务",
-        "description": "模板参数已经带入，可按华为 Profile 修改。这里不选实体：提交后会在下一步逐个服务选择 HA 实体。\n\n参数来源：[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成 prod_id）。",
+        "description": "模板参数已经带入，可按华为 Profile 修改。这里不选实体：提交后会在下一步逐个服务选择 HA 实体。\n\n参数来源：[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成 prod_id）。\n\n{profile_note}",
         "data": {
           "key": "子设备标识（key，可留空）",
           "prod_id": "产品 ID（prod_id）",
@@ -69,10 +79,10 @@
           "model": "设备型号，对应 Profile 的 deviceModel，例如 haTest10。",
           "friendly_name": "显示在华为智慧生活 App 里的名称。",
           "room": "显示在华为智慧生活 App 里的房间名，可留空。",
-          "protocol_type": "对应 Profile 的 protocolType，常见为 6。",
+          "protocol_type": "协议类型：1 Wi-Fi、3 Zigbee、6 蓝牙 Mesh；完整对照见 README。",
           "setup_type": "对应 Profile 的 setupType，一般为 0。",
           "known_fields_only": "只上报 Profile 中已知的字段；sub_prod_id 为空时必须开启。",
-          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。可以不选：不选则只注册设备，不投影任何服务。"
+          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。可以不选：不选则只注册设备，不投影任何服务。本目录没有的 sid（如 warmSwitch、currentGasConsumption）无法投影，整条省略即可。"
         }
       },
       "edit_child": {
@@ -109,10 +119,10 @@
           "model": "设备型号，对应 Profile 的 deviceModel，例如 haTest10。",
           "friendly_name": "显示在华为智慧生活 App 里的名称；也会显示在编辑/删除子设备的列表里，建议填中文。",
           "room": "显示在华为智慧生活 App 里的房间名，可留空。",
-          "protocol_type": "对应 Profile 的 protocolType，常见为 6。",
+          "protocol_type": "协议类型：1 Wi-Fi、3 Zigbee、6 蓝牙 Mesh；完整对照见 README。",
           "setup_type": "对应 Profile 的 setupType，一般为 0。",
           "known_fields_only": "只上报 Profile 中已知的字段；sub_prod_id 为空时必须开启。",
-          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。可以不选：不选则只注册设备，不投影任何服务。"
+          "services": "选择要投影的华为服务；下一步会逐个服务选择 HA 实体。可以不选：不选则只注册设备，不投影任何服务。本目录没有的 sid（如 warmSwitch、currentGasConsumption）无法投影，整条省略即可。"
         }
       },
       "service": {
@@ -124,9 +134,9 @@
           "contract": "contract 覆盖（可选）"
         },
         "data_description": {
-          "st": "服务类型，默认按 sid 自动匹配；只有 Profile 明确要求时才改，例如 switch 改成 binarySwitch。",
+          "st": "服务类型（st）通常不用改；switch 可按 Profile 改成 binarySwitch。适配器按 sid 精确匹配：Profile 里 st=switch 但 sid=warmSwitch、heatSwitch、lightSwitch 这类变体不支持，请整条省略。",
           "entities": "选择这个服务对应的 Home Assistant 实体，必填；按服务要求可多选。",
-          "contract": "可选。按 Profile 覆盖枚举、量程或字段名；有 fields 时顺序必须与上面实体顺序一致。留空使用适配器默认值。支持 YAML 或 JSON。"
+          "contract": "可选。按 Profile 覆盖枚举、量程或字段名；有 fields 时顺序必须与上面实体顺序一致。留空使用适配器默认值；不接受 contract 或必须配置 contract 的服务，以上方提示为准。支持 YAML 或 JSON。"
         }
       },
       "delete_child": {
@@ -159,16 +169,17 @@
       }
     },
     "error": {
+      "profile_invalid": "无法解析粘贴的 Profile，请检查是否完整复制了整段单品 Profile JSON。",
       "invalid_key": "请使用 1-64 位字母、数字、下划线或连字符。",
       "duplicate_key": "该子设备标识已存在。",
       "required": "此项必填。",
       "sub_prod_id_requires_known_fields": "sub_prod_id 为空时必须开启“仅上报已知字段”。",
       "invalid_contract": "contract 必须是 YAML/JSON 键值对。",
       "contract_bool_key": "contract 里的 on/off/yes/no 被 YAML 当成了布尔值；请给键或值加引号，例如 'on': 1 或 0: 'off'。",
-      "action_commands_required": "action 绑定非 cover 实体时必须显式配置 commands，例如开关类 0=off、1=on；扫地机 0=pause、1=start、2=cancel。",
+      "action_commands_required": "action 绑定非 cover/valve 实体时必须显式配置 commands，例如开关类 0=off、1=on；扫地机 0=start、1=pause、2=cancel。",
       "action_roles_invalid": "contract.commands 的角色不适用于所选实体域；cover 用 open/close/stop，开关类用 on/off，扫地机用 start/pause/cancel。",
-      "electric_fields_required": "electric 必须在 contract 里配置 fields：字段名用该产品 Profile 的特性名，数量与顺序都必须和上面选的实体一致。9MTX 依次是 totalConsum（累计用电量）、currentElectric1（电流）、currentVoltage1（电压）、currentPower1（功率）。",
-      "electric_fields_entities_mismatch": "electric 的 fields 数量必须等于绑定实体数，且顺序一一对应：第 1 个实体 → fields 第 1 项，第 2 个 → 第 2 项，依此类推。只上报部分字段时，请删掉多余的字段并保持剩余顺序；上游在数量不一致时只告警并跳过上报。",
+      "electric_fields_required": "electric 必须在 contract 里配置 fields：字段名用产品 Profile 的特性名，必须逐字一致，顺序和数量与选中的 HA 实体严格一一对应。",
+      "electric_fields_entities_mismatch": "electric 的 fields 数量必须等于绑定实体数，顺序一一对应。只上报部分字段时，删除多余字段，剩下的保持原顺序。",
       "status_cover_default": "cover 的状态是 open/closed，不是 on/off；请按 Profile 修改 states，例如 closed=1、open=2。",
       "yaml_invalid": "内容不是有效的 YAML 映射。",
       "entities_required": "请至少选择一个 HA 实体。",

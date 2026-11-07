@@ -8,10 +8,11 @@
 
 ## 功能
 
-- **产品模板**：9MU7 智控灯泡、9MTJ 智控夜灯、9MTL 智控床头灯、9MTM 智控压力传感器、9MTR 智控水壶、9MTV 智控灭蚊器、9MTW 智控电饭煲、9MTX 智控断路器、9MXO 智控空调、9MY5 智控窗帘、ZJ0V 探针，选中后自动填好华为产品参数。
+- **产品模板**：9MU7 智控灯泡、9MTJ 智控夜灯、9MTL 智控床头灯、9MTM 智控压力传感器、9MTR 智控水壶、9MTV 智控灭蚊器、9MTW 智控电饭煲、9MTX 智控断路器、9MXO 智控空调、9MY5 智控窗帘、ZJ0V 探针；另有「自定义」模板，粘贴设备 Profile JSON 即可自动识别产品参数。
 - **子设备管理**：添加、编辑、删除，支持查看和直接编辑 YAML。
 - **实体绑定**：每个华为服务单独一页选择 HA 实体，实体选择器按服务过滤域。
 - **contract 覆盖**：按 Profile 调整枚举、量程、字段名，支持 YAML 和 JSON。
+- **字段中英文对照**：服务页会按当前 contract 的 `fields` / `field` / `target_field` 自动列出「字段名 — 中文含义」，`electric` 还带序号，方便把实体顺序和字段顺序对齐。
 - **保存前校验**：调用上游 `load_enabled_mapping()`，校验失败不会覆盖现有文件。
 - **自动备份**：每次保存前生成 `mapping.yaml.bak`。
 - **自动生效**：保存后按上游“重载子设备配置”按钮，不需要重启 HA。
@@ -89,11 +90,13 @@ config/custom_components/oneconnect_bridge_gui/
 | 智控空调（9MXO） | 9MXO | 012 | test20 | switch / mode / temperature / fan |
 | 智控窗帘（9MY5） | 9MY5 | 01C | haTest23 | leftAction / opener |
 | 探针：尊界S800（ZJ0V） | ZJ0V | 347 | MAEXTRO-S800 Grand Design | 无（只验证网关） |
-| 自定义 | 手填 | 手填 | 手填 | 手选 |
+| 自定义 | 自动识别 | 自动识别 | 自动识别 | 自动识别 / 手选 |
+
+选「自定义」后会先打开「粘贴设备 Profile」页：把华为设备的 Profile JSON 整段粘进去，会自动识别 `prod_id`、`device_type`、`model`、`manufacturer`、`protocol_type`，带入能识别的服务并预填各服务的 contract；解析成功后下一页顶部会显示识别摘要。也可以留空直接手填。
 
 **第 2 步：产品身份与服务。** 模板值已带入，可按华为 Profile 修改；然后勾选要投影的服务。**HA 实体不在这一页**，提交后才会进入实体选择。
 
-**第 3 步起：逐个服务选 HA 实体。** 每个选中的服务单独一页，实体选择器只列出该服务允许的域（例如 `brightness` 只列 `light.*`，`mode`/`fan` 只列 `climate.*`）。**必须至少选择一个实体**，否则该服务无法提交。`contract` 可以留空，使用适配器默认值。
+**第 3 步起：逐个服务选 HA 实体。** 每个选中的服务单独一页，实体选择器只列出该服务允许的域（例如 `brightness` 只列 `light.*`，`mode`/`fan` 只列 `climate.*`）。**必须至少选择一个实体**，否则该服务无法提交。`contract` 可以留空，使用适配器默认值。页面顶部会按 contract 里的字段自动显示中英文对照；改动 `contract` 并重新提交后，对照会一起刷新。
 
 ### 子设备列表怎么认
 
@@ -126,17 +129,18 @@ device_1
 | `prod_id` | 华为产品 ID | 模板带入；对应 Profile 文件名 / 目录的 DeviceId |
 | `sub_prod_id` | 子产品 ID | `00` |
 | `device_type` | 设备类型 | 模板带入；Profile 的 `deviceTypeId` |
-| `manufacturer` | 厂商 ID | `002` |
+| `manufacturer` | 厂商 ID | 通常 `002`；Profile 的 `manufacturerId` |
 | `model` | 设备型号 | 模板带入；Profile 的 `deviceModel` |
-| `protocol_type` | 协议类型 | `6` |
-| `setup_type` | 配网类型 | `0` |
+| `protocol_type` | 协议类型 | `6`（蓝牙 Mesh）；Profile 的 `protocolType`，取值见下 |
+| `setup_type` | 配网类型 | `0`；Profile 的 `setupType` |
 | `known_fields_only` | 只上报 Profile 已知字段 | 关；`sub_prod_id` 为空时必须开 |
 | `services` | 要投影的华为服务 | 模板带入，可增减 |
 | `st` | 服务类型 | 按 sid 自动匹配，一般不用改（`switch` 可改 `binarySwitch`，`gasSensor` 固定 `gas`） |
 | `entities` | 对应的 HA 实体 | 必填，实体选择器 |
 | `contract` | 协议覆盖（枚举/量程/字段名） | 可留空 |
 
-每个字段在表单下方还有一行灰色说明（HA 的 `data_description`）。
+
+`protocol_type` 取值与协议对应：`0` 无效、`1` Wi-Fi、`2` Z-Wave、`3` Zigbee、`4` 蓝牙、`5` PLC 电力线、`6` 蓝牙 Mesh、`7` NFC、`8` 以太网、`9` 蜂窝移动、`10` USB、`11` PLC+Wi-Fi、`12` 蓝牙+Wi-Fi、`13` HiBeacon、`16` 星闪、`100` 虚拟设备。填错会被云端以 15013 拒绝注册。
 
 ### contract 怎么写
 
@@ -203,23 +207,40 @@ YAML 里 `on` / `off` / `yes` / `no` 作为键或 `commands`/`states` 的值时�
 
 模板里没有的产品，需要到华为 IoT 资料库查 `prod_id / device_type / model`：
 
+- 华为Iot产品库：https://hispec.dxdgo.com/
 - 全量目录（按产品名或 DeviceId 搜索）：
   https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json
 - 单品 Profile（把 `9MU7` 换成你的产品 ID）：
   https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json
 
-Profile 字段对应关系：
 
-| Profile 字段 | YAML / 表单字段 |
-| --- | --- |
-| `DeviceId` | `prod_id` |
-| `deviceTypeId` | `device_type` |
-| `deviceModel` | `model` |
-| `manufacturerId` | `manufacturer`（通常是 `002`） |
-| `protocolType` | `protocol_type` |
-| `setupType` | `setup_type` |
+## 项目结构
 
-模板页和产品页里也直接放了这两个链接，点开就能查。
+```text
+ha-oneconnect-bridge-gui/
+├── custom_components/oneconnect_bridge_gui/（集成本体）
+│   ├── __init__.py（集成入口）
+│   ├── manifest.json（HA 元数据）
+│   ├── config_flow.py（配置流与校验）
+│   ├── const.py（常量、子设备上限）
+│   ├── profile.py（mapping 读写与备份）
+│   ├── mapping_ops.py（子设备增删改）
+│   ├── runtime.py（触发上游重载）
+│   ├── product_templates.py（内置产品模板）
+│   ├── services_catalog.py（服务目录与提示）
+│   ├── contract_fields.py（字段中文对照）
+│   ├── device_profile.py（Profile 解析）
+│   ├── strings.json（默认中文文案）
+│   ├── translations/（中英文翻译）
+│   │   ├── en.json
+│   │   └── zh-Hans.json
+│   └── brand/（图标与 logo）
+│       ├── icon.png
+│       └── logo.png
+├── default_mapping.yaml（mapping 示例）
+├── CHANGELOG.md（版本记录）
+└── README.md（使用说明）
+```
 
 ## 文件与行为说明
 

@@ -11,6 +11,8 @@ from homeassistant.core import callback
 from homeassistant.helpers import selector
 
 from .const import CONF_GATEWAY_ENTRY_ID, CONF_SERIAL, DOMAIN, UPSTREAM_DOMAIN
+from .contract_fields import describe_contract_fields
+from .device_profile import DeviceProfile, ProfileError, parse_device_profile
 from .mapping_ops import (
     KEY_PATTERN,
     build_child_entry,
@@ -173,9 +175,9 @@ def _contract_domain_error(sid: str, entities: list[str], contract: dict) -> str
             return None
         commands = contract.get("commands")
         if not commands:
-            # cover-like domains have a usable upstream default; every other
-            # domain needs explicit commands or upstream skips the service.
-            return None if domain == "cover" else "action_commands_required"
+            # cover/valve have a usable upstream default; every other domain
+            # needs explicit commands or upstream skips the service.
+            return None if domain in {"cover", "valve"} else "action_commands_required"
         if not isinstance(commands, dict) or any(
             not isinstance(role, str) or role not in supported
             for role in commands.values()
@@ -504,6 +506,8 @@ class OptionsFlow(config_entries.OptionsFlow):
         self._template_key: str = DEFAULT_TEMPLATE
         self._child_identity: str = ""
         self._preset_contracts: dict[str, dict] = {}
+        self._device_profile: DeviceProfile | None = None
+        self._profile_text: str = ""
 
     # -- helpers ---------------------------------------------------------
 
@@ -630,6 +634,10 @@ class OptionsFlow(config_entries.OptionsFlow):
             self._template_key = (
                 template if template in TEMPLATE_MAP else CUSTOM_TEMPLATE
             )
+            self._device_profile = None
+            self._profile_text = ""
+            if self._template_key == CUSTOM_TEMPLATE:
+                return await self.async_step_profile()
             return await self.async_step_add_product()
         return self.async_show_form(
             step_id="add_child",
@@ -648,10 +656,58 @@ class OptionsFlow(config_entries.OptionsFlow):
             ),
         )
 
+    async def async_step_profile(self, user_input=None):
+        """Paste a Huawei Profile and derive the product form defaults."""
+
+        error_text = ""
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            self._profile_text = str(user_input.get("profile") or "")
+            if self._profile_text.strip():
+                try:
+                    self._device_profile = parse_device_profile(self._profile_text)
+                except ProfileError as error:
+                    self._device_profile = None
+                    errors["base"] = "profile_invalid"
+                    error_text = str(error)
+                else:
+                    error_text = ""
+            else:
+                self._device_profile = None
+            if not errors:
+                return await self.async_step_add_product()
+        return self.async_show_form(
+            step_id="profile",
+            data_schema=vol.Schema(
+                {
+                    vol.Optional("profile", default=self._profile_text): (
+                        selector.TextSelector(
+                            selector.TextSelectorConfig(multiline=True)
+                        )
+                    )
+                }
+            ),
+            errors=errors,
+            description_placeholders={
+                "error": f"⚠ 解析失败：{error_text}" if error_text else ""
+            },
+        )
+
+    def _profile_defaults(self) -> dict:
+        """Merge the parsed Profile over the template defaults."""
+
+        defaults = template_defaults(self._template_key)
+        if self._device_profile is None:
+            return defaults
+        for name, value in self._device_profile.defaults().items():
+            if value not in ("", None, [], ()):
+                defaults[name] = value
+        return defaults
+
     async def async_step_add_product(self, user_input=None):
         """Step 2: product identity, key and services; entities come next."""
 
-        defaults = template_defaults(self._template_key)
+        defaults = self._profile_defaults()
         errors: dict[str, str] = {}
         if user_input is not None:
             key = str(user_input.get("key") or "").strip()
@@ -678,6 +734,8 @@ class OptionsFlow(config_entries.OptionsFlow):
                     errors["key"] = "duplicate_key"
             if not errors and mapping is not None:
                 presets = template_contracts(self._template_key)
+                if self._device_profile is not None:
+                    presets = {**presets, **self._device_profile.contracts}
                 self._preset_contracts = {
                     sid: dict(presets[sid]) for sid in services if sid in presets
                 }
@@ -704,6 +762,13 @@ class OptionsFlow(config_entries.OptionsFlow):
             step_id="add_product",
             data_schema=_product_schema(defaults, include_key=True),
             errors=errors,
+            description_placeholders={
+                "profile_note": (
+                    self._device_profile.summary()
+                    if self._device_profile is not None
+                    else ""
+                )
+            },
         )
 
     def _suggest_key(self, mapping: dict) -> str:
@@ -848,8 +913,12 @@ class OptionsFlow(config_entries.OptionsFlow):
             )
             hint += "\n\n" + (
                 note
-                or "当前产品模板已按 Profile 预填 contract：fields 必须与绑定的实体"
-                "按顺序一一对应；只上报一部分时，把多出来的字段删掉。"
+                or (
+                    "当前产品模板已按 Profile 预填 contract：fields 必须与绑定的实体"
+                    "按顺序一一对应；只上报一部分时，把多出来的字段删掉。"
+                    if "fields" in preset
+                    else "当前产品已按 Profile 预填 contract，请按 Profile 核对字段名或枚举值后再提交。"
+                )
             )
         existing = self._service_values.get(sid) or {}
         errors: dict[str, str] = {}
@@ -886,6 +955,14 @@ class OptionsFlow(config_entries.OptionsFlow):
                 # 旧映射里的电表类服务常常是空 contract：按产品模板把字段补上
                 saved = preset
             contract_text = _dump_contract(saved or spec.contract_template)
+        try:
+            preview_contract = _parse_contract(contract_text)
+        except (TypeError, ValueError):
+            preview_contract = {}
+        else:
+            field_note = describe_contract_fields(sid, preview_contract)
+            if field_note:
+                hint = f"{hint}\n\n{field_note}" if hint else field_note
         return self.async_show_form(
             step_id="service",
             data_schema=_service_schema(spec, entities, contract_text, service_type),

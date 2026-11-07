@@ -115,8 +115,9 @@ TEMPLATES: tuple[ProductTemplate, ...] = (
         friendly_name="智控断路器",
         room="配电箱",
         services=("switch", "electric"),
-        # 9MTX 的 electric 只有这四个 float 特性，字段名必须与 Profile 逐字一致；
-        # 通用示例里的 current / voltage 在该产品上不存在，照填会静默不上报。
+        # 9MTX 的 electric 只有这四个 float 特性，contract 字段名必须与 Profile 逐字一致。
+        # contract_note 第三段（totalElectricity / current / voltage）是用户补充的别名写法，
+        # 只用于提示对应关系，不会写进 contract；实际字段仍以上面四项为准。
         contracts={
             "electric": {
                 "fields": [
@@ -129,11 +130,10 @@ TEMPLATES: tuple[ProductTemplate, ...] = (
         },
         contract_notes={
             "electric": (
-                "9MTX 的对应关系（实体按这个顺序选，不能乱）：\n"
-                "第 1 个实体 = 累计用电量 → totalConsum\n"
-                "第 2 个实体 = 电流 → currentElectric1\n"
-                "第 3 个实体 = 电压 → currentVoltage1\n"
-                "第 4 个实体 = 功率 → currentPower1"
+                "累计用电量=totalConsum=totalElectricity\n"
+                "电流=currentElectric1=current\n"
+                "电压=currentVoltage1=voltage\n"
+                "功率=currentPower1"
             )
         },
     ),
@@ -171,7 +171,7 @@ TEMPLATES: tuple[ProductTemplate, ...] = (
     ),
     ProductTemplate(
         key=CUSTOM_TEMPLATE,
-        label="自定义（手动填写产品参数）",
+        label="自定义（粘贴设备 Profile JSON 自动识别）",
     ),
 )
 
