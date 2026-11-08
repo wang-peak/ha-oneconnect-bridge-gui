@@ -4,7 +4,7 @@
 
 给 [OneConnect Bridge](https://github.com/xiasi0/ha-oneconnect-bridge) 用的图形配置界面：在 Home Assistant 里添加、编辑、删除子设备，选择 HA 实体，填写 contract，不再手写 `.storage/oneconnect_bridge/gateways/<serial>/mapping.yaml`。
 
-本集成只读写上游的 `mapping.yaml`，不修改上游代码，所以 OneConnect Bridge 仍然可以通过 HACS 正常更新。
+本集成只读写上游的 `mapping.yaml`，不修改上游代码，所以 OneConnect Bridge 仍然可以通过 Marketplace 正常更新。
 
 ## 功能
 
@@ -24,24 +24,27 @@
 - Home Assistant ≥ 2024.11；上游本身按 2026.10.x 验证。
 - 上游的局域网要求仍然适用：HA 主机与华为智慧生活 App 在同一 IPv4 局域网，UDP 5683 可用，网卡允许组播。
 
+<!-- ha-marketplace:exclude-start -->
 ## 安装
 
-### 方式一：HACS（推荐）
+前置：Home Assistant 2026.11+（内置 Marketplace，取代 HACS）。
+
+### 方式一：Marketplace（推荐）
 
 先安装上游 OneConnect Bridge：
 
 ```text
-HACS → 集成 → 右上角 ⋮ → 自定义存储库
-添加 https://github.com/xiasi0/ha-oneconnect-bridge
-类型选 Integration → 下载 → 重启 Home Assistant
+设置 → Marketplace → 从链接添加
+添加 https://github.com/xiasi0/ha-oneconnect-bridge（或 xiasi0/ha-oneconnect-bridge）
+类型选 集成（Integration）→ 添加 → 打开仓库页面 → 安装 → 重启 Home Assistant
 ```
 
 再安装本集成：
 
 ```text
-HACS → 集成 → 右上角 ⋮ → 自定义存储库
-添加 https://github.com/wang-peak/ha-oneconnect-bridge-gui
-类型选 Integration → 搜索 OneConnect Bridge GUI → 下载 → 重启 Home Assistant
+设置 → Marketplace → 从链接添加
+添加 https://github.com/wang-peak/ha-oneconnect-bridge-gui（或 wang-peak/ha-oneconnect-bridge-gui）
+类型选 集成（Integration）→ 添加 → 打开仓库页面 → 安装 → 重启 Home Assistant
 ```
 
 ### 方式二：手动
@@ -53,6 +56,8 @@ config/custom_components/oneconnect_bridge_gui/
 ```
 
 重启 Home Assistant。也可以从 [Releases](https://github.com/wang-peak/ha-oneconnect-bridge-gui/releases) 下载 `oneconnect_bridge_gui-<版本号>.zip`，解压到 `config/`。
+
+<!-- ha-marketplace:exclude-end -->
 
 ## 使用
 
@@ -259,7 +264,7 @@ ha-oneconnect-bridge-gui/
 - 保存失败时会弹出持久通知，内容就是上游校验的原文。
 - 校验失败不会改动现有 `mapping.yaml`；修好后重新提交即可。
 - 若提示“自动重载未成功”，到 **设置 → 设备与服务 → OneConnect Bridge** 手动点“重新加载”。
-- HACS 搜索不到集成时，点 HACS 页面右上角“重新加载”或重启 HA，清除 HACS 缓存。
+- 集成搜索不到时，打开 Marketplace 页面再次“从链接添加”或重启 HA，刷新仓库缓存。
 - 日志：`custom_components.oneconnect_bridge_gui`；上游日志仍是 `custom_components.oneconnect_bridge`。
 
 ## 卸载

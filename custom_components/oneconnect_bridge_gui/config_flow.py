@@ -52,6 +52,18 @@ _LOGGER = logging.getLogger(__name__)
 OPTIONAL_PRODUCT_FIELDS = ("friendly_name", "room")
 REQUIRED_PRODUCT_FIELDS = ("prod_id", "device_type", "manufacturer", "model")
 
+_PROFILE_EXAMPLE_URL = "https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json"
+
+_CATALOG_LINKS = (
+    "[全量目录]"
+    "(https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json)"
+    "（按产品名或 DeviceId 搜索）\n"
+    f"[单品 Profile 示例]({_PROFILE_EXAMPLE_URL})（把 9MU7 换成你的产品 ID）\n"
+    "[华为 IoT 产品库](https://hispec.dxdgo.com)（按产品名查规格和 Profile）"
+)
+
+_PROFILE_LINK = f"[单品 Profile 示例]({_PROFILE_EXAMPLE_URL})（把 9MU7 换成 prod_id）"
+
 
 class ContractKeyError(ValueError):
     """YAML parsed an on/off-style key as a boolean instead of text."""
@@ -641,6 +653,7 @@ class OptionsFlow(config_entries.OptionsFlow):
             return await self.async_step_add_product()
         return self.async_show_form(
             step_id="add_child",
+            description_placeholders={"catalog_links": _CATALOG_LINKS},
             data_schema=vol.Schema(
                 {
                     vol.Required(
@@ -689,7 +702,8 @@ class OptionsFlow(config_entries.OptionsFlow):
             ),
             errors=errors,
             description_placeholders={
-                "error": f"⚠ 解析失败：{error_text}" if error_text else ""
+                "error": f"⚠ 解析失败：{error_text}" if error_text else "",
+                "catalog_links": _CATALOG_LINKS,
             },
         )
 
@@ -767,7 +781,8 @@ class OptionsFlow(config_entries.OptionsFlow):
                     self._device_profile.summary()
                     if self._device_profile is not None
                     else ""
-                )
+                ),
+                "profile_link": _PROFILE_LINK,
             },
         )
 

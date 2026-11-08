@@ -35,7 +35,7 @@
       },
       "add_child": {
         "title": "添加子设备（1/2）：选择产品模板",
-        "description": "先选产品模板，下一页会自动填好华为产品参数；没有对应模板时选「自定义」，会先进入 Profile 粘贴页，自动识别产品参数和服务。\n\n华为 IoT 资料库：\n[全量目录](https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json)（按产品名或 DeviceId 搜索）\n[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成你的产品 ID）\n[华为 IoT 产品库](https://hispec.dxdgo.com)（按产品名查规格和 Profile）\n\nProfile 中：DeviceId → prod_id，deviceTypeId → device_type，deviceModel → model。",
+        "description": "先选产品模板，下一页会自动填好华为产品参数；没有对应模板时选「自定义」，会先进入 Profile 粘贴页，自动识别产品参数和服务。\n\n华为 IoT 资料库：\n{catalog_links}\n\nProfile 中：DeviceId → prod_id，deviceTypeId → device_type，deviceModel → model。",
         "data": {
           "template": "产品模板"
         },
@@ -45,7 +45,7 @@
       },
       "profile": {
         "title": "添加子设备（1/2）：粘贴设备 Profile",
-        "description": "把华为设备的 Profile JSON 整段粘贴到下面，提交后会自动识别 prod_id、device_type、manufacturer、model、protocol_type 和服务，并在下一页预填。\n\nProfile 从产品资料库打开：\n[全量目录](https://smarthome-drcn.dbankcdn.com/device/guide/ver_202609_hmos/mainHelp.json)（按产品名或 DeviceId 搜索）\n[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成你的产品 ID）\n\n留空提交则直接手动填写。\n\n{error}",
+        "description": "把华为设备的 Profile JSON 整段粘贴到下面，提交后会自动识别 prod_id、device_type、manufacturer、model、protocol_type 和服务，并在下一页预填。\n\nProfile 从产品资料库打开：\n{catalog_links}\n\n留空提交则直接手动填写。\n\n{error}",
         "data": {
           "profile": "设备 Profile JSON"
         },
@@ -55,7 +55,7 @@
       },
       "add_product": {
         "title": "添加子设备（2/2）：产品身份与服务",
-        "description": "模板参数已经带入，可按华为 Profile 修改。这里不选实体：提交后会在下一步逐个服务选择 HA 实体。\n\n参数来源：[单品 Profile 示例](https://smarthome-drcn.dbankcdn.com/device/guide/9MU7/9MU7.json)（把 9MU7 换成 prod_id）。\n\n{profile_note}",
+        "description": "模板参数已经带入，可按华为 Profile 修改。这里不选实体：提交后会在下一步逐个服务选择 HA 实体。\n\n参数来源：{profile_link}。\n\n{profile_note}",
         "data": {
           "key": "子设备标识（key，可留空）",
           "prod_id": "产品 ID（prod_id）",

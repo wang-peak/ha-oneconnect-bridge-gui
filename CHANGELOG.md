@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.2.10
+
+- 适配 HA 2026.11 内置 Marketplace：README 安装章节改为「设置 → Marketplace → 从链接添加」，并用 `ha-marketplace:exclude` 标记包裹，Marketplace 仓库页自动隐藏；排错条目同步更新。
+- CI 新增 hassfest 校验（与 HACS action 并行），提前拦截 manifest、翻译与目录结构问题。
+- `manifest.json` 键序按 hassfest 规范重排（`domain`、`name`，其余字母序）；无功能变化。
+- 无运行时改动，升级后行为与 0.2.9 一致。
+
+## 0.2.9
+
+- 新增「粘贴设备 Profile」流程：添加子设备选「自定义」模板后，先进入 Profile 页粘贴华为单品 Profile JSON，自动识别 `prod_id`、`device_type`、`manufacturer`、`model`、`protocol_type` 和可投影服务，并在下一页预填；留空提交则直接手动填写；解析失败给出中文提示（`profile_invalid`）。
+- 新增 `device_profile.py`（解析单品 Profile、合并服务与 contract 默认值）和 `contract_fields.py`（contract 字段名 → 中文含义），electric 服务页按当前 contract 显示字段对照，提交时提示 fields 与实体的对应关系。
+- 添加子设备页显示 Profile 摘要占位 `{profile_note}`，方便核对识别到的产品信息。
+- `action` 的 commands 校验放宽到 cover/valve（留空可用上游默认），其它域仍需显式配置；提示示例改为扫地机 `0=start`、`1=pause`、`2=cancel`。
+- 服务提示按 Profile 重写：`on_mode` 必须是实体 `hvac_modes` 里存在的模式；`sid=warmSwitch/heatSwitch/lightSwitch` 这类变体不支持，需整条省略；`protocol_type` 给出 1 Wi-Fi、3 Zigbee、6 蓝牙 Mesh 对照；`st` 通常不用改，switch 可按 Profile 改成 binarySwitch。
+- `status` 提示重写：states 的键必须是实体实际 state 文本（YAML 中 `on`/`off` 要加引号），states 与 fallback 至少一项；`electric` 的 fields 必须与绑定实体数量、顺序严格一致，integers/scales 的键只能是 fields 中已有字段。
+- 量程与枚举提示补全：cover/valve 量程必须在 0–100 内且 step 能整除量程；`direction` 只能 1 或 2；`level_map` 的 max 必须递增；dimmer 上游默认 0–255，预填 0–100 仅是示例；light 不接受 contract，颜色取 `rgb_color`（0–255）。
+- 自定义模板名称改为「自定义（粘贴设备 Profile JSON 自动识别）」；9MTX 模板补充 totalElectricity/current/voltage 仅为别名提示，实际 contract 仍用 totalConsum/currentElectric1/currentVoltage1/currentPower1。
+- 适配 HA 2026.11 内置 Marketplace：README 安装章节改为 Marketplace 流程并加 `ha-marketplace:exclude` 标记，CI 增加 hassfest 校验，manifest 键序按 hassfest 规范排序。
+
 ## 0.2.8
 
 - 新增 9MTJ 智控夜灯、9MTL 智控床头灯、9MTM 智控压力传感器、9MTR 智控水壶、9MTV 智控灭蚊器、9MTW 智控电饭煲、9MTX 智控断路器模板，并为已有模板预填房间。
