@@ -128,14 +128,6 @@ TEMPLATES: tuple[ProductTemplate, ...] = (
                 ]
             }
         },
-        contract_notes={
-            "electric": (
-                "累计用电量=totalConsum=totalElectricity\n"
-                "电流=currentElectric1=current\n"
-                "电压=currentVoltage1=voltage\n"
-                "功率=currentPower1"
-            )
-        },
     ),
     ProductTemplate(
         key="9mxo",
@@ -180,7 +172,10 @@ TEMPLATE_MAP: dict[str, ProductTemplate] = {
 }
 
 TEMPLATE_OPTIONS: list[dict[str, str]] = [
-    {"value": template.key, "label": template.label} for template in TEMPLATES
+    {"value": template.key, "label": template.label}
+    for template in sorted(
+        TEMPLATES, key=lambda template: template.key != CUSTOM_TEMPLATE
+    )
 ]
 
 

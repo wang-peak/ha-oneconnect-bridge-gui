@@ -131,12 +131,14 @@
         "data": {
           "st": "服务类型（st）",
           "entities": "对应的 HA 实体",
-          "contract": "contract 覆盖（可选）"
+          "contract": "contract 覆盖（可选）",
+          "back": "⬅ 返回上一步（勾选后提交）"
         },
         "data_description": {
           "st": "服务类型（st）通常不用改；switch 可按 Profile 改成 binarySwitch。适配器按 sid 精确匹配：Profile 里 st=switch 但 sid=warmSwitch、heatSwitch、lightSwitch 这类变体不支持，请整条省略。",
           "entities": "选择这个服务对应的 Home Assistant 实体，必填；按服务要求可多选。",
-          "contract": "可选。按 Profile 覆盖枚举、量程或字段名；有 fields 时顺序必须与上面实体顺序一致。留空使用适配器默认值；不接受 contract 或必须配置 contract 的服务，以上方提示为准。支持 YAML 或 JSON。"
+          "contract": "可选。按 Profile 覆盖枚举、量程或字段名；有 fields 时顺序必须与上面实体顺序一致。留空使用适配器默认值；不接受 contract 或必须配置 contract 的服务，以上方提示为准。支持 YAML 或 JSON。",
+          "back": "在第一个服务时返回产品设置页面；在后续服务时返回上一个服务。提交后当前未保存的修改会丢弃。"
         }
       },
       "delete_child": {

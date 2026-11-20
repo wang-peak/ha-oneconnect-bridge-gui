@@ -332,6 +332,7 @@ def _service_schema(
     fields[vol.Optional("contract", default=contract_text)] = selector.TextSelector(
         selector.TextSelectorConfig(multiline=True)
     )
+    fields[vol.Optional("back", default=False)] = selector.BooleanSelector()
     return vol.Schema(fields)
 
 
@@ -658,7 +659,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                 {
                     vol.Required(
                         "template",
-                        default=DEFAULT_TEMPLATE,
+                        default=CUSTOM_TEMPLATE,
                     ): selector.SelectSelector(
                         selector.SelectSelectorConfig(
                             options=TEMPLATE_OPTIONS,
@@ -722,6 +723,25 @@ class OptionsFlow(config_entries.OptionsFlow):
         """Step 2: product identity, key and services; entities come next."""
 
         defaults = self._profile_defaults()
+        # 从服务步骤返回时，恢复用户之前填写的产品信息和服务选择
+        if self._product:
+            for name in (
+                "prod_id",
+                "sub_prod_id",
+                "device_type",
+                "manufacturer",
+                "model",
+                "friendly_name",
+                "room",
+                "protocol_type",
+                "setup_type",
+                "known_fields_only",
+            ):
+                if self._product.get(name) not in (None, ""):
+                    defaults[name] = self._product[name]
+            defaults["services"] = list(self._services)
+            if self._key:
+                defaults["key"] = self._key
         errors: dict[str, str] = {}
         if user_input is not None:
             key = str(user_input.get("key") or "").strip()
@@ -838,6 +858,23 @@ class OptionsFlow(config_entries.OptionsFlow):
     async def async_step_edit_product(self, user_input=None):
         child = self._base_child or {}
         defaults = _product_defaults(child)
+        # 从服务步骤返回时，恢复用户之前填写的产品信息和服务选择
+        if self._product:
+            for name in (
+                "prod_id",
+                "sub_prod_id",
+                "device_type",
+                "manufacturer",
+                "model",
+                "friendly_name",
+                "room",
+                "protocol_type",
+                "setup_type",
+                "known_fields_only",
+            ):
+                if self._product.get(name) not in (None, ""):
+                    defaults[name] = self._product[name]
+            defaults["services"] = list(self._services)
         extras = list(self._services)
         if user_input is not None:
             product = _product_from_input(user_input)
@@ -929,10 +966,9 @@ class OptionsFlow(config_entries.OptionsFlow):
             hint += "\n\n" + (
                 note
                 or (
-                    "当前产品模板已按 Profile 预填 contract：fields 必须与绑定的实体"
-                    "按顺序一一对应；只上报一部分时，把多出来的字段删掉。"
+                    "已按 Profile 预填 contract：fields 必须与绑定实体按顺序一一对应。"
                     if "fields" in preset
-                    else "当前产品已按 Profile 预填 contract，请按 Profile 核对字段名或枚举值后再提交。"
+                    else "已按 Profile 预填 contract，核对后提交即可。"
                 )
             )
         existing = self._service_values.get(sid) or {}
@@ -941,6 +977,14 @@ class OptionsFlow(config_entries.OptionsFlow):
         entities = list(existing.get("entities") or [])
         service_type = self._service_st.get(sid) or spec.st
         if user_input is not None:
+            # 返回上一步：退回上一个服务，或在第一个服务时退回产品设置页
+            if user_input.get("back"):
+                if self._service_index > 0:
+                    self._service_index -= 1
+                    return await self.async_step_service()
+                if self._mode == "edit":
+                    return await self.async_step_edit_product()
+                return await self.async_step_add_product()
             entities = _entity_list(user_input.get("entities"))
             contract_text = str(user_input.get("contract") or "")
             service_type = str(user_input.get("st") or "").strip() or spec.st
@@ -966,10 +1010,48 @@ class OptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_service()
         if contract_text is None:
             saved = existing.get("contract")
-            if not saved and preset:
+            if not saved and preset and sid != "status":
                 # 旧映射里的电表类服务常常是空 contract：按产品模板把字段补上
                 saved = preset
-            contract_text = _dump_contract(saved or spec.contract_template)
+            # 需要占位符预填的服务：键名为占位符，值为整数，行尾注释为 Profile 原始描述
+            if sid == "status":
+                preset_states = preset.get("states") or {}
+                profile_items = list(preset_states.items())
+                if profile_items:
+                    lines: list[str] = []
+                    for index, (key, val) in enumerate(profile_items, start=1):
+                        key_name = "HA实体显示的状态" if index == 1 else f"HA实体显示的状态_{index}"
+                        lines.append(f"  {key_name}: {val} #{key}")
+                    fallback_val = profile_items[0][1]
+                    contract_text = (
+                        "states:\n"
+                        + "\n".join(lines)
+                        + f"\nfallback: {fallback_val}"
+                    )
+                else:
+                    contract_text = ""
+            elif sid == "mode":
+                preset_values = preset.get("values") or {}
+                if preset_values:
+                    lines: list[str] = []
+                    for index, (key, val) in enumerate(preset_values.items(), start=1):
+                        key_name = "HA实体显示的状态" if index == 1 else f"HA实体显示的状态_{index}"
+                        lines.append(f"  {key_name}: {val} #{key}")
+                    contract_text = "values:\n" + "\n".join(lines)
+                else:
+                    contract_text = ""
+            elif sid == "fan":
+                # fan 适配器只接受 gear_values / direction_enabled，不再生成 min/max/step
+                preset_gear_values = preset.get("gear_values") or {}
+                parts: list[str] = []
+                if preset_gear_values:
+                    parts.append("gear_values:")
+                    for index, (key, val) in enumerate(preset_gear_values.items(), start=1):
+                        key_name = "HA实体显示的状态" if index == 1 else f"HA实体显示的状态_{index}"
+                        parts.append(f"  {key_name}: {val} #{key}")
+                contract_text = "\n".join(parts) if parts else ""
+            else:
+                contract_text = _dump_contract(saved or spec.contract_template)
         try:
             preview_contract = _parse_contract(contract_text)
         except (TypeError, ValueError):

@@ -17,6 +17,7 @@
 - **自动备份**：每次保存前生成 `mapping.yaml.bak`。
 - **自动生效**：保存后按上游“重载子设备配置”按钮，不需要重启 HA。
 - **中文界面**：字段名、说明、错误提示均为中文。
+- **支持的服务**：switch（含 switch1/2/3）、brightness、cct、colour、mode、fan、temperature、humidity、action（含 leftAction）、status、electric、airDetector、motor、openLevel、opener、hcho、alarm、gasSensor、cleanerRobot、power。
 
 ## 前置条件
 
@@ -101,7 +102,7 @@ config/custom_components/oneconnect_bridge_gui/
 
 **第 2 步：产品身份与服务。** 模板值已带入，可按华为 Profile 修改；然后勾选要投影的服务。**HA 实体不在这一页**，提交后才会进入实体选择。
 
-**第 3 步起：逐个服务选 HA 实体。** 每个选中的服务单独一页，实体选择器只列出该服务允许的域（例如 `brightness` 只列 `light.*`，`mode`/`fan` 只列 `climate.*`）。**必须至少选择一个实体**，否则该服务无法提交。`contract` 可以留空，使用适配器默认值。页面顶部会按 contract 里的字段自动显示中英文对照；改动 `contract` 并重新提交后，对照会一起刷新。
+**第 3 步起：逐个服务选 HA 实体。** 每个选中的服务单独一页，实体选择器只列出该服务允许的域（例如 `brightness` 只列 `light.*`，`mode`/`fan` 只列 `climate.*`）。**必须至少选择一个实体**，否则该服务无法提交。`contract` 可以留空，使用适配器默认值。页面顶部会按 contract 里的字段自动显示中英文对照；改动 `contract` 并重新提交后，对照会一起刷新。页面底部有「⬅ 返回上一步」开关：勾选后提交会回到上一个服务，在第一个服务时返回产品设置页（当前未提交的修改会丢弃）。
 
 ### 子设备列表怎么认
 
@@ -127,7 +128,7 @@ device_1
 
 | 表单字段 | 中文含义 | 默认 / 来源 |
 | --- | --- | --- |
-| `template` | 产品模板 | 默认 9MU7，决定下面大部分参数 |
+| `template` | 产品模板 | 默认「自定义」（粘贴 Profile 自动识别），也可切到预置模板 |
 | `key` | 子设备标识，网关内唯一 | 可留空，自动生成 `device_1` |
 | `friendly_name` | 华为 App 里的显示名 | 模板带入，可改 |
 | `room` | 华为 App 里的房间 | 可留空 |

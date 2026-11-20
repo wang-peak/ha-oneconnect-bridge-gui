@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.11
+
+- 新增 `status`、`mode`、`fan` 三个服务的 Profile 自动解析：粘贴 Profile 后按 `enumList` 生成 `states`/`values`/`gear_values` 的占位符预填（键统一写「HA实体显示的状态」，行尾注释保留 Profile 原始描述），用户只需替换键名。
+- 服务页底部新增「⬅ 返回上一步」开关：勾选后提交回到上一个服务，第一个服务时返回产品设置页；返回产品页会保留已填写的产品信息和服务勾选。
+- 添加子设备的模板下拉把「自定义」排到最上方，并设为默认选中，粘贴 Profile 成为默认路径。
+- 服务页顶部提示按适配器实际能力重写：`switch`、`brightness`、`temperature`、`humidity`、`action`、`status`、`electric` 精简为分点说明；`fan` 明确 `direction_enabled` 默认 true。
+- 删除 9MTX 模板里手写的 electric `contract_notes`，字段对照统一由 `contract_fields.py` 按预填的 `fields` 自动生成，避免两段重复说明。
+- 修复 `fan` 自动解析把 `speed` 的 `min`/`max` 写进 contract 的问题：上游 fan 适配器只接受 `gear_values`/`direction_enabled`，此前会因非法键导致整份映射被拒绝。
+- 新增上游 `power` 服务适配器（只读，读取 HA 数值实体作为功率 W 上报）与 GUI 服务目录条目；粘贴含 `power` 服务的 Profile（如转换插座）后可直接绑定功率传感器。
+
 ## 0.2.10
 
 - 适配 HA 2026.11 内置 Marketplace：README 安装章节改为「设置 → Marketplace → 从链接添加」，并用 `ha-marketplace:exclude` 标记包裹，Marketplace 仓库页自动隐藏；排错条目同步更新。

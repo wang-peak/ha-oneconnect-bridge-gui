@@ -33,8 +33,9 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("climate", "light", "switch", "fan"),
         False,
         ("on_type", "on_mode"),
-        "on_type: int 或 bool（默认 int）；on_mode: 打开 climate 时使用的 hvac_mode（默认 auto），必须是该实体 hvac_modes 里存在的模式，否则开关指令会被忽略。\n"
-        "Profile 的 sid 必须是 switch；warmSwitch、heatSwitch、lightSwitch 等变体不支持，请整条省略。",
+        "on_type: int 或 bool（默认 int）\n"
+        "on_mode: 打开 climate 时使用的 hvac_mode（默认 auto），必须是该实体 hvac_modes 里存在的值\n"
+        "Profile 的 sid 必须是 switch；warmSwitch、heatSwitch、lightSwitch 等变体不支持",
     ),
     ServiceSpec(
         "brightness",
@@ -43,7 +44,8 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("light",),
         False,
         ("min", "max", "step"),
-        "华为量程通常不是 HA 的 0-255；上游默认 min=0、max=255、step=1，下方预填 0-100 只是常见 Profile 的示例，请按 Profile 修改。",
+        "min/max/step: Profile 中 brightness 特性的量程（常见 0-100）\n"
+        "上游默认 0-255 仅在不填时生效；粘贴 Profile 会自动使用实际量程",
         {"min": 0, "max": 100, "step": 1},
     ),
     ServiceSpec(
@@ -72,9 +74,8 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("climate",),
         False,
         ("values",),
-        "values: HA hvac_mode → 华为枚举值；默认映射取自空调（auto=1、cool=2、heat=3、fan_only=4、dry=5），非空调设备不要照抄。\n"
-        "该服务只接受 climate.* 实体：茶具、洗衣机、油烟机等的档位也要用一个 climate 实体承载，把 values 的键改成该实体 hvac_modes 里存在的值，值填 Profile 的枚举。\n"
-        "off 不在默认映射里；电源由 switch 服务负责。",
+        "values: HA hvac_mode → Profile 枚举值。\n"
+        "键必须是该 climate 实体 hvac_modes 里存在的值；off 不在映射里，电源由 switch 负责。",
     ),
     ServiceSpec(
         "fan",
@@ -83,7 +84,8 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("climate",),
         False,
         ("gear_values", "direction_enabled"),
-        "gear_values: HA fan_mode → 档位；direction_enabled 为 false 时上报和下发都不处理摆风。",
+        "gear_values: HA fan_mode → Profile 档位枚举。\n"
+        "direction_enabled: 默认 true（处理摆风）；Profile 没有 direction 特性时设为 false。",
     ),
     ServiceSpec(
         "temperature",
@@ -92,16 +94,11 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("sensor", "climate"),
         False,
         ("field", "target_field", "scale"),
-        "温度（temperature）\n"
-        "field：读取当前温度的 Profile 字段名，默认 current\n"
-        "target_field：写入目标温度的 Profile 字段名，默认 target\n"
-        "scale：倍率，默认 1；0.1 表示云端显示值要乘以 10 才是实际温度\n"
-        "field/target_field 留空字符串表示不启用该方向，两者至少保留一个\n"
-        "留空时用上游默认值；如 Profile 字段名不同，在此按 YAML/JSON 覆盖，例如：\n"
-        "field: current_temp\n"
-        "target_field: target_temp\n"
-        "scale: 0.1\n"
-        "上游只处理 current/target 两个特性；Profile 有三个特性（如 current、preserveTarget、temperature）时，只能选一读一写，第三个无法投影。",
+        "field: 当前温度字段名（默认 current）\n"
+        "target_field: 目标温度字段名（默认 target）\n"
+        "scale: 换算倍率（默认 1；0.1 表示云端值要乘以 10 才是实际温度）\n"
+        "留空字符串表示不启用该方向，field 与 target_field 至少保留一个\n"
+        "上游只处理 current/target 两个特性，第三个特性无法投影",
     ),
     ServiceSpec(
         "humidity",
@@ -110,8 +107,10 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("sensor", "climate"),
         False,
         ("field", "target_field", "scale"),
-        "field 默认 current，target_field 默认 target，scale 默认 1；"
-        "field/target_field 留空字符串表示不启用该方向，两者至少保留一个。",
+        "field: 当前湿度字段名（默认 current）\n"
+        "target_field: 目标湿度字段名（默认 target）\n"
+        "scale: 换算倍率（默认 1）\n"
+        "留空字符串表示不启用该方向，field 与 target_field 至少保留一个",
     ),
     ServiceSpec(
         "action",
@@ -131,11 +130,11 @@ _BASE: tuple[ServiceSpec, ...] = (
         ),
         False,
         ("commands", "states", "idle"),
-        "commands: 枚举值 → 角色，下面只是常见示例，请按 Profile 实际定义填写：\n"
-        "cover：0=关、1=开、2=停\n"
-        "开关类：0=off、1=on\n"
-        "扫地机：0=start、1=pause、2=cancel\n"
-        "只有 cover/valve 在 contract 留空时才用上游默认（0=开、1=关、2=停）；其它域必须显式填 commands。",
+        "commands: 枚举值 → 角色，例如：\n"
+        "  cover/valve: {0: close, 1: open, 2: stop}\n"
+        "  开关类: {0: off, 1: on}\n"
+        "  扫地机: {0: start, 1: pause, 2: cancel}\n"
+        "只有 cover/valve 留空时用上游默认（0=开、1=关、2=停）；其他域必须显式填 commands",
         {"commands": {0: "close", 1: "open", 2: "stop"}},
     ),
     ServiceSpec(
@@ -145,15 +144,11 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("cover", "binary_sensor", "sensor"),
         False,
         ("states", "fallback"),
-        "states: HA 实体的 state 文本 → Profile 枚举值。键必须是实体实际出现的状态字符串"
-        "（不是含义名），同一个值可以对应多个键；YAML 里 on/off 必须加引号。例如：\n"
-        "states:\n"
-        "  idle: 0\n"
-        "  'off': 0\n"
-        "  待机: 0\n"
-        "fallback: 实体状态不在 states 里时上报的值；states 与 fallback 至少配置一项。\n"
-        "只读：只上报，不下发。\n"
-        "cover 实体常用 open / closed，枚举值按 Profile 填。",
+        "states: HA 实体实际显示的状态 → Profile 枚举值整数\n"
+        "  键必须是实体真实出现的 state 字符串（如 off/online），不是含义名\n"
+        "  YAML 里 on/off/yes/no 必须加引号，例如 'off': 0\n"
+        "fallback: 状态不在 states 里时上报的默认值；states 与 fallback 至少配置一项\n"
+        "只读：只上报状态到华为云端，不接收下发指令",
         {},
     ),
     ServiceSpec(
@@ -163,12 +158,11 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("sensor", "number", "input_number"),
         True,
         ("fields", "integers", "scales"),
-        "电量统计（electric）\n"
-        "必选：至少选 1 个 HA 实体\n"
-        "fields：产品 Profile 中的电量特性名，必须逐字一致，顺序和数量与选中的 HA 实体严格一一对应\n"
-        "只上报部分字段时：删除多余字段，剩下的保持原顺序\n"
-        "integers：取整字段；scales：字段 → 倍率\n"
-        "integers 和 scales 的键都必须是 fields 里已有的字段；同一字段不能既在 integers 里、又把 scale 设成小于 1。",
+        "fields: 电量特性名列表（必填），顺序与绑定的 HA 实体一一对应\n"
+        "integers: 需要取整的字段名（可选）\n"
+        "scales: 字段 → 换算倍率（可选，默认 1）\n"
+        "只上报部分字段时，删除多余字段并保持顺序\n"
+        "integers/scales 的键必须是 fields 里已有的字段",
     ),
     ServiceSpec(
         "airDetector",
@@ -242,6 +236,16 @@ _BASE: tuple[ServiceSpec, ...] = (
         False,
         (),
         "该服务不接受 contract。",
+    ),
+    ServiceSpec(
+        "power",
+        "power",
+        "功率",
+        ("sensor", "number", "input_number"),
+        False,
+        (),
+        "只读：读取 HA 实体的数值作为功率（W）上报到华为云端，不接受 contract。\n"
+        "如果 HA 实体单位是 kW，请先用模板传感器换算成 W 再绑定。",
     ),
 )
 

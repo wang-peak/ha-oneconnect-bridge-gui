@@ -382,6 +382,8 @@ def _contract_for(
         return _measurement_contract(characteristics)
     if sid == "electric":
         return _electric_contract(characteristics)
+    if sid == "status":
+        return _status_contract(characteristics)
     return {}
 
 
@@ -401,20 +403,28 @@ def _mode_contract(characteristics: list[dict]) -> dict:
     char = _find_char(characteristics, "mode")
     values: dict[str, int] = {}
     for value, desc in _enum_entries(char):
-        name = _role(_HA_MODES, desc)
-        if name and name not in values:
-            values[name] = value
+        key = desc or str(value)
+        if key and key not in values:
+            values[key] = value
     return {"values": values} if values else {}
 
 
 def _fan_contract(characteristics: list[dict]) -> dict:
-    char = _find_char(characteristics, "gear", "fanSpeed", "windSpeed", "speed")
-    gears: dict[str, int] = {}
-    for value, desc in _enum_entries(char):
-        name = _role(_GEARS, desc)
-        if name and name not in gears:
-            gears[name] = value
-    return {"gear_values": gears} if gears else {}
+    # 上游 fan 适配器只接受 gear_values / direction_enabled；
+    # speed 的 min/max 不是合法 contract 键，不能写进 contract。
+    contract: dict = {}
+    direction_char = _find_char(
+        characteristics, "direction", "gear", "fanSpeed", "windSpeed"
+    )
+    if direction_char is not None:
+        gears: dict[str, int] = {}
+        for value, desc in _enum_entries(direction_char):
+            key = desc or str(value)
+            if key and key not in gears:
+                gears[key] = value
+        if gears:
+            contract["gear_values"] = gears
+    return contract if contract else {}
 
 
 def _action_contract(
@@ -513,6 +523,30 @@ def _electric_contract(characteristics: list[dict]) -> dict:
     if integers:
         contract["integers"] = integers
     return contract
+
+
+def _status_contract(characteristics: list[dict]) -> dict:
+    """从 Profile 的 status 特性枚举列表推导 states 映射。
+
+    键是 Profile 原始描述，值是 enumVal（整数）。
+    仅当能识别至少两个不同的枚举值时才返回，避免产生无意义的单值映射。
+    config_flow.py 会将键替换为占位符，行尾添加原始描述注释。
+    """
+
+    char = _find_char(characteristics, "status")
+    if char is None:
+        return {}
+    entries = _enum_entries(char)
+    if len(entries) < 2:
+        return {}
+    states: dict[str, int] = {}
+    for value, desc in entries:
+        key = desc or str(value)
+        if key not in states:
+            states[key] = value
+    if len(states) < 2:
+        return {}
+    return {"states": states}
 
 
 def _range_contract(char: dict | None, low: int, high: int) -> dict:
