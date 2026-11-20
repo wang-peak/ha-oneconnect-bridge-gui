@@ -2,7 +2,9 @@
 
 > 非官方 Home Assistant 自定义集成，与华为、OneConnect 官方无关。使用前请阅读上游项目的免责声明。
 
-给 [OneConnect Bridge](https://github.com/xiasi0/ha-oneconnect-bridge) 用的图形配置界面：在 Home Assistant 里添加、编辑、删除子设备，选择 HA 实体，填写 contract，不再手写 `.storage/oneconnect_bridge/gateways/<serial>/mapping.yaml`。
+> **AI 生成声明**：本项目的代码与文档主要由 AI 生成，人工审阅并测试。使用前请自行评估风险。
+
+给 [OneConnect Bridge](https://github.com/duanyudan86/ha-oneconnect-bridge) 用的图形配置界面：在 Home Assistant 里添加、编辑、删除子设备，选择 HA 实体，填写 contract，不再手写 `.storage/oneconnect_bridge/gateways/<serial>/mapping.yaml`。
 
 本集成只读写上游的 `mapping.yaml`，不修改上游代码，所以 OneConnect Bridge 仍然可以通过 Marketplace 正常更新。
 
@@ -36,7 +38,7 @@
 
 ```text
 设置 → Marketplace → 从链接添加
-添加 https://github.com/xiasi0/ha-oneconnect-bridge（或 xiasi0/ha-oneconnect-bridge）
+添加 https://github.com/duanyudan86/ha-oneconnect-bridge（或 duanyudan86/ha-oneconnect-bridge）
 类型选 集成（Integration）→ 添加 → 打开仓库页面 → 安装 → 重启 Home Assistant
 ```
 
