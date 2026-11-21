@@ -14,7 +14,7 @@ from .const import CONF_GATEWAY_ENTRY_ID, CONF_SERIAL, DOMAIN, UPSTREAM_DOMAIN
 from .contract_fields import describe_contract_fields
 from .device_profile import DeviceProfile, ProfileError, parse_device_profile
 from .mapping_ops import (
-    KEY_PATTERN,
+    is_safe_key,
     build_child_entry,
     ensure_defaults,
     remove_child,
@@ -44,6 +44,7 @@ from .services_catalog import (
     ACTION_ROLES_BY_DOMAIN,
     SERVICE_OPTIONS,
     ServiceSpec,
+    base_sid,
     get_spec,
 )
 
@@ -180,7 +181,8 @@ def _entity_domain(entities: list[str]) -> str:
 def _contract_domain_error(sid: str, entities: list[str], contract: dict) -> str | None:
     """Return a translation key when the contract cannot work for this domain."""
 
-    if sid in {"action", "leftAction"}:
+    base = base_sid(sid)
+    if base == "action":
         domain = _entity_domain(entities)
         supported = ACTION_ROLES_BY_DOMAIN.get(domain)
         if supported is None:
@@ -196,7 +198,7 @@ def _contract_domain_error(sid: str, entities: list[str], contract: dict) -> str
         ):
             return "action_roles_invalid"
         return None
-    if sid == "electric":
+    if base == "electric":
         fields = contract.get("fields")
         if not isinstance(fields, list) or not fields:
             return "electric_fields_required"
@@ -204,15 +206,15 @@ def _contract_domain_error(sid: str, entities: list[str], contract: dict) -> str
             # 上游对数量不一致只告警一次并跳过上报，界面上不拦就会「填了没数据」。
             return "electric_fields_entities_mismatch"
         return None
-    if sid == "airDetector":
+    if base == "airDetector":
         if len(set(entities)) != 2:
             return "air_detector_entities_required"
         return None
-    if sid == "gasSensor":
+    if base == "gasSensor":
         if not 1 <= len(set(entities)) <= 2:
             return "gas_sensor_entities_required"
         return None
-    if sid == "status":
+    if base == "status":
         states = contract.get("states")
         fallback = contract.get("fallback")
         if states is not None and not isinstance(states, dict):
@@ -237,6 +239,24 @@ def _contract_domain_error(sid: str, entities: list[str], contract: dict) -> str
         if _entity_domain(entities) == "cover" and states and set(states) == {"on", "off"}:
             return "status_cover_default"
     return None
+
+
+_PLACEHOLDER_PREFIX = "HA实体显示的状态"
+
+
+def _contract_has_placeholder(value: object) -> bool:
+    """Return True when a generated ``HA实体显示的状态`` key is still present."""
+
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(key, str) and key.startswith(_PLACEHOLDER_PREFIX):
+                return True
+            if _contract_has_placeholder(item):
+                return True
+        return False
+    if isinstance(value, list):
+        return any(_contract_has_placeholder(item) for item in value)
+    return False
 
 
 def _product_schema(
@@ -762,7 +782,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                     return await self._fail(str(error))
                 if not key:
                     key = self._suggest_key(mapping)
-                if not KEY_PATTERN.fullmatch(key):
+                if not is_safe_key(key):
                     errors["key"] = "invalid_key"
                 elif key in self._children(mapping):
                     errors["key"] = "duplicate_key"
@@ -773,17 +793,36 @@ class OptionsFlow(config_entries.OptionsFlow):
                 self._preset_contracts = {
                     sid: dict(presets[sid]) for sid in services if sid in presets
                 }
+                # 从服务步骤返回时保留已填实体/contract/st，避免改动产品信息后
+                # 把前面几个服务的填写内容清空；换了 key 则视为重新开始。
+                returning = self._mode == "add" and self._key == key
+                previous = self._service_values if returning else {}
+                previous_st = self._service_st if returning else {}
+                values: dict[str, dict] = {}
+                for sid in services:
+                    preset = self._preset_contracts.get(sid) or {}
+                    prior = previous.get(sid) or {}
+                    contract = prior.get("contract")
+                    if not isinstance(contract, dict) or not contract:
+                        # status/mode/fan 的预填只用于生成「占位符 + 原始描述」提示，
+                        # 不能当成已保存的 contract，否则服务页会直接显示 Profile 描述，
+                        # 用户会误以为可以直接提交。
+                        contract = {} if base_sid(sid) in {"status", "mode", "fan"} else dict(preset)
+                    values[sid] = {
+                        "entities": list(prior.get("entities") or []),
+                        "contract": dict(contract),
+                    }
                 self._start_service_selection(
                     mode="add",
                     key=key,
                     product=product,
                     base_child=None,
                     services=services,
-                    values={
-                        sid: {"entities": [], "contract": dict(preset)}
-                        for sid, preset in self._preset_contracts.items()
+                    values=values,
+                    service_types={
+                        sid: previous_st.get(sid) or get_spec(sid).st
+                        for sid in services
                     },
-                    service_types={},
                 )
                 return await self.async_step_service()
             defaults = {
@@ -902,16 +941,31 @@ class OptionsFlow(config_entries.OptionsFlow):
                 for sid in user_input.get("services") or []
                 if isinstance(sid, str)
             ]
-            _, values, service_types = _existing_services(child)
+            _, existing_values, service_types = _existing_services(child)
+            # 从服务步骤返回时用当前值覆盖旧值，避免编辑内容在“返回上一步”后丢失。
+            previous = self._service_values if self._mode == "edit" else {}
+            values: dict[str, dict] = {}
+            for sid in selected:
+                base = existing_values.get(sid) or {}
+                prior = previous.get(sid) or {}
+                contract = prior.get("contract")
+                if not isinstance(contract, dict) or not contract:
+                    contract = base.get("contract")
+                if not isinstance(contract, dict):
+                    contract = {}
+                values[sid] = {
+                    "entities": list(prior.get("entities") or base.get("entities") or []),
+                    "contract": dict(contract),
+                }
             self._start_service_selection(
                 mode="edit",
                 key=self._key,
                 product=product,
                 base_child=child,
                 services=selected,
-                values={sid: values[sid] for sid in selected if sid in values},
+                values=values,
                 service_types={
-                    sid: service_types.get(sid, get_spec(sid).st) for sid in selected
+                    sid: service_types.get(sid) or get_spec(sid).st for sid in selected
                 },
             )
             return await self.async_step_service()
@@ -957,20 +1011,32 @@ class OptionsFlow(config_entries.OptionsFlow):
         from_preset = sid in self._preset_contracts
         preset = self._preset_contracts.get(sid) or contracts_for_prod_id(prod_id).get(sid) or {}
         hint = spec.contract_hint or "该服务没有可配置的 contract，留空即可。"
+        previous_contract = (self._service_values.get(sid) or {}).get("contract")
+        placeholder_prefill = base_sid(sid) in {"status", "mode", "fan"} and (
+            not previous_contract
+            or (preset and dict(previous_contract) == dict(preset))
+        )
         if preset:
             note = (
                 template_contract_note(self._template_key, sid)
                 if from_preset
                 else contract_note_for_prod_id(prod_id, sid)
             )
-            hint += "\n\n" + (
-                note
-                or (
-                    "已按 Profile 预填 contract：fields 必须与绑定实体按顺序一一对应。"
-                    if "fields" in preset
-                    else "已按 Profile 预填 contract，核对后提交即可。"
+            if placeholder_prefill:
+                hint += (
+                    "\n\n已按 Profile 预填枚举值：键是占位符「HA实体显示的状态」，"
+                    "请替换成该实体实际上报的 state（如 on/off/open/closed）；"
+                    "行尾注释是 Profile 原始描述，仅供对照。"
                 )
-            )
+            else:
+                hint += "\n\n" + (
+                    note
+                    or (
+                        "已按 Profile 预填 contract：fields 必须与绑定实体按顺序一一对应。"
+                        if "fields" in preset
+                        else "已按 Profile 预填 contract，核对后提交即可。"
+                    )
+                )
         existing = self._service_values.get(sid) or {}
         errors: dict[str, str] = {}
         contract_text: str | None = None
@@ -1000,6 +1066,11 @@ class OptionsFlow(config_entries.OptionsFlow):
                 domain_error = _contract_domain_error(sid, entities, contract)
                 if domain_error is not None:
                     errors["contract"] = domain_error
+                elif base_sid(sid) in {"status", "mode", "fan"} and (
+                    _contract_has_placeholder(contract)
+                ):
+                    # 占位符是预填提示，不是可用配置：原样保存会让映射永远匹配不上。
+                    errors["contract"] = "placeholder_unfilled"
             if not errors:
                 self._service_values[sid] = {
                     "entities": entities,
@@ -1010,11 +1081,20 @@ class OptionsFlow(config_entries.OptionsFlow):
                 return await self.async_step_service()
         if contract_text is None:
             saved = existing.get("contract")
-            if not saved and preset and sid != "status":
+            placeholder_sid = base_sid(sid) in {"status", "mode", "fan"}
+            if saved and preset and placeholder_sid and dict(saved) == dict(preset):
+                # 旧版本把 Profile 描述直接写进了 contract（和预填完全相同）。
+                # 这种“没改过”的保存值显示成占位符，提醒用户换成 HA 实际 state。
+                saved = None
+            if not saved and preset and not placeholder_sid:
                 # 旧映射里的电表类服务常常是空 contract：按产品模板把字段补上
                 saved = preset
+            # 已保存的 contract 优先原样显示；占位符预填只用于还没配置过的服务，
+            # 否则编辑已有子设备时 status/mode/fan 会被显示成空白并丢掉原配置
+            if saved:
+                contract_text = _dump_contract(saved)
             # 需要占位符预填的服务：键名为占位符，值为整数，行尾注释为 Profile 原始描述
-            if sid == "status":
+            elif base_sid(sid) == "status":
                 preset_states = preset.get("states") or {}
                 profile_items = list(preset_states.items())
                 if profile_items:
@@ -1030,7 +1110,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                     )
                 else:
                     contract_text = ""
-            elif sid == "mode":
+            elif base_sid(sid) == "mode":
                 preset_values = preset.get("values") or {}
                 if preset_values:
                     lines: list[str] = []
@@ -1040,7 +1120,7 @@ class OptionsFlow(config_entries.OptionsFlow):
                     contract_text = "values:\n" + "\n".join(lines)
                 else:
                     contract_text = ""
-            elif sid == "fan":
+            elif base_sid(sid) == "fan":
                 # fan 适配器只接受 gear_values / direction_enabled，不再生成 min/max/step
                 preset_gear_values = preset.get("gear_values") or {}
                 parts: list[str] = []
@@ -1049,9 +1129,13 @@ class OptionsFlow(config_entries.OptionsFlow):
                     for index, (key, val) in enumerate(preset_gear_values.items(), start=1):
                         key_name = "HA实体显示的状态" if index == 1 else f"HA实体显示的状态_{index}"
                         parts.append(f"  {key_name}: {val} #{key}")
+                if preset.get("direction_enabled") is False:
+                    # 只有档位、没有摆风特性的 Profile（如 9MXO）：
+                    # 保留 direction_enabled: false，否则上游默认 true 会恒报 direction=1。
+                    parts.append("direction_enabled: false")
                 contract_text = "\n".join(parts) if parts else ""
             else:
-                contract_text = _dump_contract(saved or spec.contract_template)
+                contract_text = _dump_contract(spec.contract_template)
         try:
             preview_contract = _parse_contract(contract_text)
         except (TypeError, ValueError):

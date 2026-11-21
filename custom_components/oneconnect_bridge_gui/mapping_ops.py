@@ -2,11 +2,21 @@
 
 from __future__ import annotations
 
-import re
-
 from .const import MAX_CHILDREN
 
-KEY_PATTERN = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+#: 与上游 ``storage.is_safe_child_key`` 保持一致：允许中文等单个路径段，
+#: 只拒绝路径分隔符、控制字符和 ``.``/``..``。
+_UNSAFE_KEY_CHARS = ("/", "\\", "\x00")
+
+
+def is_safe_key(key: object) -> bool:
+    if not isinstance(key, str) or not key:
+        return False
+    if key in {".", ".."}:
+        return False
+    if any(char in key for char in _UNSAFE_KEY_CHARS):
+        return False
+    return not any(ord(char) < 0x20 or ord(char) == 0x7F for char in key)
 
 
 def new_mapping(serial: str) -> dict:
@@ -23,12 +33,16 @@ def new_mapping(serial: str) -> dict:
 def validate_key(key: str) -> None:
     """Reject new child keys that could clash with paths or tooling.
 
-    只约束**新建**的子设备标识（GUI 的 key 输入框）；已在 mapping.yaml 里的 key
-    原样允许编辑，避免手写/历史 key（例如含点号）无法通过图形界面修改。
+    与上游一致：只要求是单个安全路径段（中文、空格、点号都可以），
+    ``/``、``\\``、控制字符、``.`` 和 ``..`` 例外。已在 mapping.yaml
+    里的 key 原样允许编辑。
     """
 
-    if not KEY_PATTERN.fullmatch(key):
-        raise ValueError("子设备标识只能使用 1-64 位字母、数字、下划线或连字符")
+    if not is_safe_key(key):
+        raise ValueError(
+            "子设备标识必须是单个路径段：不能为空、不能是「.」或「..」，"
+            "也不能包含「/」「\\」或控制字符；中文、空格、点号可以使用"
+        )
 
 
 def build_child_entry(

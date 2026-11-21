@@ -6,6 +6,7 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -115,17 +116,30 @@ def save_mapping(config_dir: str, serial: str, mapping: dict) -> Path:
     if not isinstance(mapping, dict):
         raise MappingError("映射根节点必须是映射")
     path = mapping_path(config_dir, serial)
-    temporary = path.with_name(f"{path.name}.tmp")
-    check_path = path.with_name(f"{path.name}.check")
+    temporary: Path | None = None
     try:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         if mapping.get("enabled") is True:
-            _validate_enabled(mapping, check_path)
+            _validate_enabled(mapping)
         else:
             _validate_disabled(mapping)
 
         text = render_mapping(mapping)
-        temporary.write_text(text, encoding="utf-8")
+        handle = tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            dir=path.parent,
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            delete=False,
+        )
+        try:
+            temporary = Path(handle.name)
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        finally:
+            handle.close()
         _chmod(temporary)
 
         if path.is_file():
@@ -135,27 +149,49 @@ def save_mapping(config_dir: str, serial: str, mapping: dict) -> Path:
                 _LOGGER.warning("Unable to back up %s: %s", path, error)
 
         os.replace(temporary, path)
+        temporary = None
         _chmod(path)
+        _fsync_dir(path.parent)
     except OSError as error:
         raise MappingError(f"无法写入 {path}: {error}") from error
     finally:
-        for leftover in (check_path, temporary):
+        if temporary is not None:
             try:
-                leftover.unlink(missing_ok=True)
+                temporary.unlink(missing_ok=True)
             except OSError:
                 pass
     _LOGGER.info("Wrote OneConnect mapping for gateway %s", serial)
     return path
 
 
-def _validate_enabled(mapping: dict, check_path: Path) -> None:
+def _validate_enabled(mapping: dict) -> None:
     """Validate a copy with the mapping enabled, as upstream will read it."""
 
     validation = dict(mapping)
     validation["enabled"] = True
-    check_path.write_text(render_mapping(validation), encoding="utf-8")
+    text = render_mapping(validation)
+    handle = tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        prefix="oneconnect_check_",
+        suffix=".yaml",
+        delete=False,
+    )
+    try:
+        check_path = Path(handle.name)
+        handle.write(text)
+        handle.flush()
+        os.fsync(handle.fileno())
+    finally:
+        handle.close()
     _chmod(check_path)
-    _validate_file(check_path)
+    try:
+        _validate_file(check_path)
+    finally:
+        try:
+            check_path.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def _validate_disabled(mapping: dict) -> None:
@@ -174,6 +210,104 @@ def _chmod(path: Path) -> None:
         pass
 
 
+def _fsync_dir(path: Path) -> None:
+    """Best-effort fsync of the directory entry after ``os.replace``."""
+
+    try:
+        descriptor = os.open(path, os.O_RDONLY)
+    except OSError:  # pragma: no cover - not available on Windows
+        return
+    try:
+        os.fsync(descriptor)
+    except OSError:  # pragma: no cover - some filesystems refuse directory fsync
+        pass
+    finally:
+        os.close(descriptor)
+
+
+# 上游 loader 的报错是英文的；GUI 只展示中文，原始信息写日志便于排查。
+_UPSTREAM_ERRORS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"^child (\S+) service (\S+) is not supported$"),
+        r"子设备 \1 的服务 \2 不受上游适配器支持：确认该服务已有适配器，且 st 未被改错。",
+    ),
+    (
+        re.compile(r"^child (\S+) has no product mapping$"),
+        r"子设备 \1 缺少 product 配置。",
+    ),
+    (
+        re.compile(r"^child (\S+) product has an invalid"),
+        r"子设备 \1 的 product 字段类型或取值无效。",
+    ),
+    (
+        re.compile(r"^child (\S+) contains an invalid service$"),
+        r"子设备 \1 的 services 里有无效条目。",
+    ),
+    (
+        re.compile(r"^child (\S+) contains an incomplete service$"),
+        r"子设备 \1 的 services 里有不完整条目（st/sid 缺失）。",
+    ),
+    (
+        re.compile(r"^child (\S+) selects service (\S+) twice$"),
+        r"子设备 \1 重复选择了服务 \2。",
+    ),
+    (
+        re.compile(r"^child (\S+) binds service (\S+) twice$"),
+        r"子设备 \1 重复绑定了服务 \2。",
+    ),
+    (
+        re.compile(r"^child (\S+) binding has no sid$"),
+        r"子设备 \1 有 binding 缺少 sid。",
+    ),
+    (
+        re.compile(r"^child (\S+) bindings must be a list$"),
+        r"子设备 \1 的 bindings 必须是列表。",
+    ),
+    (
+        re.compile(r"^child (\S+) contains an invalid binding$"),
+        r"子设备 \1 的 bindings 里有无效条目。",
+    ),
+    (
+        re.compile(r"^child keys must be non-empty text$"),
+        "子设备标识必须是非空文本。",
+    ),
+    (
+        re.compile(r"^child (\S+) must be a mapping$"),
+        r"子设备 \1 必须是键值对。",
+    ),
+    (
+        re.compile(r"^gateway_serial must be text when present$"),
+        "gateway_serial 必须是文本。",
+    ),
+    (
+        re.compile(r"^gateway mapping must have schema: 1$"),
+        "映射必须包含 schema: 1。",
+    ),
+    (
+        re.compile(r"^enabled gateway mapping must contain children$"),
+        "启用状态下映射必须包含 children。",
+    ),
+    (
+        re.compile(r"^(\w+) requires st: (.+)$"),
+        r"该服务只接受特定的 st：\2。",
+    ),
+)
+
+
+def _translate_upstream_error(message: str) -> str:
+    """Return a Chinese message for a known upstream validation error."""
+
+    text = (message or "").strip()
+    for pattern, replacement in _UPSTREAM_ERRORS:
+        if pattern.match(text):
+            return pattern.sub(replacement, text)
+    _LOGGER.warning("Upstream mapping validation failed: %s", text)
+    return (
+        "上游校验未通过：请检查 services/bindings 是否与适配器匹配、"
+        "contract 字段名是否与设备 Profile 逐字一致（详细原因见 HA 日志）。"
+    )
+
+
 def _validate_file(path: Path) -> None:
     """Validate with the installed upstream loader, else fall back locally."""
 
@@ -182,7 +316,7 @@ def _validate_file(path: Path) -> None:
         try:
             loader(path)
         except Exception as error:
-            raise MappingError(str(error)) from error
+            raise MappingError(_translate_upstream_error(str(error))) from error
         return
     _validate_local(path)
 

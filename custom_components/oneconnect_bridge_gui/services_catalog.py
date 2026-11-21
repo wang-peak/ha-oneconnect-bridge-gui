@@ -1,9 +1,14 @@
 """Local catalog of the service ids supported by OneConnect Bridge.
 
-The catalog mirrors ``business/adapters/registry.py`` of the upstream
-integration.  It only drives the GUI (labels, entity-domain filters and
-contract hints); the upstream adapter registry remains the authority and is
-used for validation whenever it can be imported.
+The catalog mirrors the adapters under ``business/adapters/`` of the upstream
+integration.  Upstream registers every adapter explicitly in
+``business/adapters/registry.py`` and keeps the canonical ``service_id`` plus
+its compatibility aliases in each module's ``ADAPTER``; that registry remains
+the authority and is used for validation whenever it can be imported.
+
+This file only drives the GUI (labels, entity-domain filters and contract
+hints), so it must list every alias upstream declares — otherwise pasting a
+Profile that uses an alias reports the service as "未收录" and drops it.
 """
 
 from __future__ import annotations
@@ -35,7 +40,8 @@ _BASE: tuple[ServiceSpec, ...] = (
         ("on_type", "on_mode"),
         "on_type: int 或 bool（默认 int）\n"
         "on_mode: 打开 climate 时使用的 hvac_mode（默认 auto），必须是该实体 hvac_modes 里存在的值\n"
-        "Profile 的 sid 必须是 switch；warmSwitch、heatSwitch、lightSwitch 等变体不支持",
+        "已收录的开关变体：switch1/switch2/switch3/switch4/usbSwitch1/switchPTC/inchingSwitch/boostMode；"
+        "warmSwitch、heatSwitch、lightSwitch 等其它变体不支持",
     ),
     ServiceSpec(
         "brightness",
@@ -134,21 +140,24 @@ _BASE: tuple[ServiceSpec, ...] = (
         "  cover/valve: {0: close, 1: open, 2: stop}\n"
         "  开关类: {0: off, 1: on}\n"
         "  扫地机: {0: start, 1: pause, 2: cancel}\n"
-        "只有 cover/valve 留空时用上游默认（0=开、1=关、2=停）；其他域必须显式填 commands",
-        {"commands": {0: "close", 1: "open", 2: "stop"}},
+        "具体枚举以设备 Profile 为准：cover/valve 留空时用上游默认（0=开、1=关、2=停），"
+        "其他域必须显式填 commands；不再预填，避免与设备的真实枚举相反",
+        {},
     ),
     ServiceSpec(
         "status",
         "status",
         "状态枚举",
-        ("cover", "binary_sensor", "sensor"),
+        ("cover", "binary_sensor", "sensor", "select"),
         False,
         ("states", "fallback"),
         "states: HA 实体实际显示的状态 → Profile 枚举值整数\n"
         "  键必须是实体真实出现的 state 字符串（如 off/online），不是含义名\n"
         "  YAML 里 on/off/yes/no 必须加引号，例如 'off': 0\n"
         "fallback: 状态不在 states 里时上报的默认值；states 与 fallback 至少配置一项\n"
-        "只读：只上报状态到华为云端，不接收下发指令",
+        "实体域：cover / binary_sensor / sensor / select（select 用当前选项文本作为 state）\n"
+        "select 双向：华为端修改枚举时按 states 反查选项并调用 select.select_option\n"
+        "cover / binary_sensor / sensor 只读：只上报状态到华为云端",
         {},
     ),
     ServiceSpec(
@@ -249,16 +258,45 @@ _BASE: tuple[ServiceSpec, ...] = (
     ),
 )
 
-_ALIASES: tuple[ServiceSpec, ...] = (
-    replace(_BASE[0], sid="switch1", label="开关 1"),
-    replace(_BASE[0], sid="switch2", label="开关 2"),
-    replace(_BASE[0], sid="switch3", label="开关 3"),
-    replace(_BASE[8], sid="leftAction", label="左路动作"),
+_BASE_BY_SID: dict[str, ServiceSpec] = {spec.sid: spec for spec in _BASE}
+
+#: (alias sid, base sid, label) — mirrors the ``aliases`` tuples declared by
+#: the upstream adapters.  ``base`` must be a canonical sid present in
+#: ``_BASE``; the alias inherits everything else (domains, contract keys,
+#: hint and template) from it.
+_ALIAS_TABLE: tuple[tuple[str, str, str], ...] = (
+    ("switch1", "switch", "开关 1"),
+    ("switch2", "switch", "开关 2"),
+    ("switch3", "switch", "开关 3"),
+    ("switch4", "switch", "开关 4"),
+    ("usbSwitch1", "switch", "USB 开关"),
+    ("leftAction", "action", "左路动作"),
+    ("memorySwitch", "status", "记忆开关状态"),
+    ("switchPTC", "switch", "电辅热"),
+    ("inchingSwitch", "switch", "点动循环"),
+    ("boostMode", "switch", "增压洗"),
+)
+
+_ALIASES: tuple[ServiceSpec, ...] = tuple(
+    replace(_BASE_BY_SID[base], sid=sid, label=label)
+    for sid, base, label in _ALIAS_TABLE
 )
 
 _ALL: tuple[ServiceSpec, ...] = _BASE + _ALIASES
 
 CATALOG: dict[str, ServiceSpec] = {spec.sid: spec for spec in _ALL}
+
+#: Alias sid -> the base sid whose adapter and flow behaviour it reuses.
+#: Derived from ``_ALIAS_TABLE`` so the two can never drift apart; keep the
+#: table in sync with ``business/adapters/*.py`` of the upstream integration.
+ALIAS_BASE: dict[str, str] = {sid: base for sid, base, _ in _ALIAS_TABLE}
+
+
+def base_sid(sid: str) -> str:
+    """Return the base sid for an alias, or ``sid`` itself."""
+
+    return ALIAS_BASE.get(sid, sid)
+
 
 # Roles understood by the upstream ``action`` adapter for each entity domain.
 # Kept here so the flow can reject a domain/role mismatch before saving; the

@@ -37,9 +37,15 @@ async def async_apply_mapping(
                 "button", "press", {"entity_id": entity_id}, blocking=True
             )
         except HomeAssistantError as error:
-            raise ReloadError(str(error)) from error
-        _LOGGER.info("Reloaded mapping for %s through %s", serial, entity_id)
-        return "button"
+            # 按钮只重载映射；失败时（网关离线/会话未建立）退回到整条 entry 重载。
+            _LOGGER.warning(
+                "Reload button %s failed (%s); retrying with a config entry reload",
+                entity_id,
+                error,
+            )
+        else:
+            _LOGGER.info("Reloaded mapping for %s through %s", serial, entity_id)
+            return "button"
 
     entry = hass.config_entries.async_get_entry(gateway_entry_id)
     if entry is None:

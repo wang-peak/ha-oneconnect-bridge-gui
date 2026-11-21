@@ -138,7 +138,7 @@
           "st": "服务类型（st）通常不用改；switch 可按 Profile 改成 binarySwitch。适配器按 sid 精确匹配：Profile 里 st=switch 但 sid=warmSwitch、heatSwitch、lightSwitch 这类变体不支持，请整条省略。",
           "entities": "选择这个服务对应的 Home Assistant 实体，必填；按服务要求可多选。",
           "contract": "可选。按 Profile 覆盖枚举、量程或字段名；有 fields 时顺序必须与上面实体顺序一致。留空使用适配器默认值；不接受 contract 或必须配置 contract 的服务，以上方提示为准。支持 YAML 或 JSON。",
-          "back": "在第一个服务时返回产品设置页面；在后续服务时返回上一个服务。提交后当前未保存的修改会丢弃。"
+          "back": "在第一个服务时返回产品设置页面；在后续服务时返回上一个服务。返回产品页后重新提交会保留已填写的实体与 contract。"
         }
       },
       "delete_child": {
@@ -189,7 +189,8 @@
       "yaml_invalid": "内容不是有效的 YAML 映射。",
       "entities_required": "请至少选择一个 HA 实体。",
       "air_detector_entities_required": "airDetector 必须绑定两个不同的 sensor 实体（温度、湿度各一个）。",
-      "gas_sensor_entities_required": "gasSensor 需要 1 个当前浓度 sensor，最多再加 1 个不同实体的等级 sensor。"
+      "gas_sensor_entities_required": "gasSensor 需要 1 个当前浓度 sensor，最多再加 1 个不同实体的等级 sensor。",
+      "placeholder_unfilled": "状态/模式映射里还有未替换的占位符，请把「HA实体显示的状态」换成设备实际上报的取值。"
     },
     "abort": {
       "gateway_missing": "OneConnect Bridge 网关条目已不存在。",

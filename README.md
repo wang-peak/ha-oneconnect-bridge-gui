@@ -19,7 +19,7 @@
 - **自动备份**：每次保存前生成 `mapping.yaml.bak`。
 - **自动生效**：保存后按上游“重载子设备配置”按钮，不需要重启 HA。
 - **中文界面**：字段名、说明、错误提示均为中文。
-- **支持的服务**：switch（含 switch1/2/3）、brightness、cct、colour、mode、fan、temperature、humidity、action（含 leftAction）、status、electric、airDetector、motor、openLevel、opener、hcho、alarm、gasSensor、cleanerRobot、power。
+- **支持的服务**：switch（含 switch1/switch2/switch3/switch4/usbSwitch1/switchPTC/inchingSwitch/boostMode）、brightness、cct、colour、mode、fan、temperature、humidity、action（含 leftAction）、status（含 memorySwitch；select 实体双向同步，其它域只读）、electric、airDetector、motor、openLevel、opener、hcho、alarm、gasSensor、cleanerRobot、power。
 
 ## 前置条件
 
@@ -104,7 +104,7 @@ config/custom_components/oneconnect_bridge_gui/
 
 **第 2 步：产品身份与服务。** 模板值已带入，可按华为 Profile 修改；然后勾选要投影的服务。**HA 实体不在这一页**，提交后才会进入实体选择。
 
-**第 3 步起：逐个服务选 HA 实体。** 每个选中的服务单独一页，实体选择器只列出该服务允许的域（例如 `brightness` 只列 `light.*`，`mode`/`fan` 只列 `climate.*`）。**必须至少选择一个实体**，否则该服务无法提交。`contract` 可以留空，使用适配器默认值。页面顶部会按 contract 里的字段自动显示中英文对照；改动 `contract` 并重新提交后，对照会一起刷新。页面底部有「⬅ 返回上一步」开关：勾选后提交会回到上一个服务，在第一个服务时返回产品设置页（当前未提交的修改会丢弃）。
+**第 3 步起：逐个服务选 HA 实体。** 每个选中的服务单独一页，实体选择器只列出该服务允许的域（例如 `brightness` 只列 `light.*`，`mode`/`fan` 只列 `climate.*`）。**必须至少选择一个实体**，否则该服务无法提交。`contract` 可以留空，使用适配器默认值。页面顶部会按 contract 里的字段自动显示中英文对照；改动 `contract` 并重新提交后，对照会一起刷新。页面底部有「⬅ 返回上一步」开关：勾选后提交会回到上一个服务，在第一个服务时返回产品设置页；返回产品页重新提交时会保留已填写的实体与 contract。
 
 ### 子设备列表怎么认
 
@@ -207,6 +207,8 @@ fallback: 0
 
 `action` 的 `commands` 角色必须匹配实体域：cover 用 `open/close/stop`，开关类用 `on/off`，扫地机用 `start/pause/cancel`；`status` 绑定 cover 时 `states` 用 `open/closed`（不是 `on/off`）。GUI 会在提交服务页时校验这些组合。
 
+`status` 绑定 `select` 实体且 Profile 把该枚举标成 `RW` 时，华为端修改会反查 `states` 写回 HA（例如 `memorySwitch` 断电记忆）；同一个枚举值对应多个 HA 状态时无法反查，只会告警一次并跳过写回。
+
 `action` 的表单会预填 `0=关 1=开 2=停`（窗帘类 Profile 的常见顺序，9MY5 即如此）；如果设备 Profile 是 `0=开 1=关`，请按 Profile 改掉预填值。contract 留空时上游按自己的默认 `0=开 1=关 2=停` 处理。
 
 YAML 里 `on` / `off` / `yes` / `no` 作为键或 `commands`/`states` 的值时必须加引号（如 `'on': 1`、`0: 'off'`），否则会被 YAML 解析成布尔值；GUI 会给出明确错误。
@@ -239,8 +241,7 @@ ha-oneconnect-bridge-gui/
 │   ├── contract_fields.py（字段中文对照）
 │   ├── device_profile.py（Profile 解析）
 │   ├── strings.json（默认中文文案）
-│   ├── translations/（中英文翻译）
-│   │   ├── en.json
+│   ├── translations/（简体中文）
 │   │   └── zh-Hans.json
 │   └── brand/（图标与 logo）
 │       ├── icon.png

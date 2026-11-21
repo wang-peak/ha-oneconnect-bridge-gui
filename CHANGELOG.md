@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.11
+## 0.2.12
 
 - 新增 `status`、`mode`、`fan` 三个服务的 Profile 自动解析：粘贴 Profile 后按 `enumList` 生成 `states`/`values`/`gear_values` 的占位符预填（键统一写「HA实体显示的状态」，行尾注释保留 Profile 原始描述），用户只需替换键名。
 - 服务页底部新增「⬅ 返回上一步」开关：勾选后提交回到上一个服务，第一个服务时返回产品设置页；返回产品页会保留已填写的产品信息和服务勾选。
@@ -8,12 +8,27 @@
 - 服务页顶部提示按适配器实际能力重写：`switch`、`brightness`、`temperature`、`humidity`、`action`、`status`、`electric` 精简为分点说明；`fan` 明确 `direction_enabled` 默认 true。
 - 删除 9MTX 模板里手写的 electric `contract_notes`，字段对照统一由 `contract_fields.py` 按预填的 `fields` 自动生成，避免两段重复说明。
 - 修复 `fan` 自动解析把 `speed` 的 `min`/`max` 写进 contract 的问题：上游 fan 适配器只接受 `gear_values`/`direction_enabled`，此前会因非法键导致整份映射被拒绝。
-- 新增上游 `power` 服务适配器（只读，读取 HA 数值实体作为功率 W 上报）与 GUI 服务目录条目；粘贴含 `power` 服务的 Profile（如转换插座）后可直接绑定功率传感器。
+- 服务目录的别名表与上游适配器对齐：补齐 `switchPTC`（电辅热）、`inchingSwitch`（点动循环）、`boostMode`（增压洗）三个开关变体；移除上游并不存在的 `motorLeft`/`motorRight`/`openLevelLeft`/`openLevelRight`/`openerLeft`/`openerRight`（此前选用会被上游以「service not supported」拒绝保存）。别名表改为由 `_ALIAS_TABLE` 统一生成 `_ALIASES` 与 `ALIAS_BASE`，避免两者失配。
+- 修复服务页「⬅ 返回上一步」到产品页后重新提交会丢弃已选实体与 contract 的问题：现在按子设备标识保留上一次填写的服务内容（仅 add/edit 同一子设备时复用）。
+- `action` 模板不再预填 `commands`：留空走上游默认，避免非 cover/valve 域被误判为「必须配置」，也避免 0=开、1=关 的设备被模板反转。
+- `temperature`/`humidity` 解析 target 时优先按字段名匹配 `target`，并排除 `preserveTarget`、`keepTarget` 等记忆字段，三特性 Profile 不再把记忆温度当成目标温度。
+- `status`/`mode`/`fan` 的占位符（「HA实体显示的状态」）未替换时直接报错 `placeholder_unfilled`，不再静默保存成永不命中的映射。
+- 修复添加子设备时 `status`/`mode`/`fan` 的 contract 直接显示成 Profile 描述（看起来像可直接提交）的问题：添加流程不再把预填内容当成已保存 contract，服务页改为显示占位符并附原始描述注释；编辑旧映射时，如果保存的 contract 与预填完全相同，也按未配置显示占位符。
+- `fan` 的占位符预填保留 `direction_enabled: false`（只有档位、没有摆风特性的 Profile，避免上游默认 true 恒报 direction=1）。
+- 上游校验错误翻译为中文：不再把 `child c1 service xxx is not supported` 这类英文原样弹给用户，原始信息写日志便于排查。
+- mapping 保存改为唯一临时文件 + fsync + 目录 fsync，校验副本放到系统临时目录；双保存/断电不再可能损坏 `mapping.yaml`。
+- 子设备标识放宽为与上游一致的安全单段名：允许中文、空格、点号，仍拒绝 `/`、`\`、控制字符和 `.`/`..`。
+- 上游 `button.<serial>_reload_children` 按下失败时回退为整条配置条目重载，不再直接报错。
+- 缺少 GUI 翻译的告警只在简体中文环境提示；其它语言回退到键名属预期行为。
+- 移除英文翻译文件（`translations/en.json`）与已失效的 CI workflow：本集成只提供简体中文界面，README 目录树同步更新。
+
+## 0.2.11
+
+- 更新适配器：新增功率 `power` 适配（只读，读取 HA 数值实体作为功率 W 上报）。
 
 ## 0.2.10
 
 - 适配 HA 2026.11 内置 Marketplace：README 安装章节改为「设置 → Marketplace → 从链接添加」，并用 `ha-marketplace:exclude` 标记包裹，Marketplace 仓库页自动隐藏；排错条目同步更新。
-- CI 新增 hassfest 校验（与 HACS action 并行），提前拦截 manifest、翻译与目录结构问题。
 - `manifest.json` 键序按 hassfest 规范重排（`domain`、`name`，其余字母序）；无功能变化。
 - 无运行时改动，升级后行为与 0.2.9 一致。
 
@@ -27,7 +42,7 @@
 - `status` 提示重写：states 的键必须是实体实际 state 文本（YAML 中 `on`/`off` 要加引号），states 与 fallback 至少一项；`electric` 的 fields 必须与绑定实体数量、顺序严格一致，integers/scales 的键只能是 fields 中已有字段。
 - 量程与枚举提示补全：cover/valve 量程必须在 0–100 内且 step 能整除量程；`direction` 只能 1 或 2；`level_map` 的 max 必须递增；dimmer 上游默认 0–255，预填 0–100 仅是示例；light 不接受 contract，颜色取 `rgb_color`（0–255）。
 - 自定义模板名称改为「自定义（粘贴设备 Profile JSON 自动识别）」；9MTX 模板补充 totalElectricity/current/voltage 仅为别名提示，实际 contract 仍用 totalConsum/currentElectric1/currentVoltage1/currentPower1。
-- 适配 HA 2026.11 内置 Marketplace：README 安装章节改为 Marketplace 流程并加 `ha-marketplace:exclude` 标记，CI 增加 hassfest 校验，manifest 键序按 hassfest 规范排序。
+- 适配 HA 2026.11 内置 Marketplace：README 安装章节改为 Marketplace 流程并加 `ha-marketplace:exclude` 标记，manifest 键序按 hassfest 规范排序。
 
 ## 0.2.8
 

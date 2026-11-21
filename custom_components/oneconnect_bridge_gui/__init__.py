@@ -61,12 +61,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         translations_loaded,
     )
     if not translations_loaded:
-        _LOGGER.warning(
-            "OneConnect Bridge GUI options translations are missing for language %s; "
-            "copy the whole custom_components/oneconnect_bridge_gui directory "
-            "(including translations/) and restart Home Assistant",
-            hass.config.language,
-        )
+        if str(hass.config.language).lower().startswith("zh"):
+            _LOGGER.warning(
+                "OneConnect Bridge GUI options translations are missing for language %s; "
+                "copy the whole custom_components/oneconnect_bridge_gui directory "
+                "(including translations/) and restart Home Assistant",
+                hass.config.language,
+            )
+        else:
+            # 本集成只提供简体中文翻译；其它语言回退到键名属预期行为。
+            _LOGGER.debug(
+                "OneConnect Bridge GUI has no translations for language %s "
+                "(Simplified Chinese only)",
+                hass.config.language,
+            )
     return True
 
 

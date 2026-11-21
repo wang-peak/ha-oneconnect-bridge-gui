@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 
-from .services_catalog import CATALOG
+from .services_catalog import CATALOG, base_sid
 
 
 class ProfileError(ValueError):
@@ -66,12 +66,10 @@ _PROTOCOL_TYPES: dict[str, int] = {
 #: role vocabulary to use when the Profile enum is just "open / close / pause".
 _COVER_SERVICES = frozenset({"motor", "openLevel", "opener"})
 #: Services of on/off devices, used for the other ``action`` vocabulary.
+#: Alias sids are normalised with ``base_sid`` before the lookup.
 _ONOFF_SERVICES = frozenset(
     {
         "switch",
-        "switch1",
-        "switch2",
-        "switch3",
         "brightness",
         "cct",
         "colour",
@@ -178,6 +176,16 @@ _GEARS: dict[str, str] = {
 
 _CURRENT_NAMES = ("current", "cur", "indoor", "环境", "当前")
 _TARGET_NAMES = ("target", "set", "设置", "目标")
+# “保留/记忆目标”类辅助字段不是真正可写的目标温度/档位。
+_NEUTRAL_TARGET_NAMES = (
+    "preserve",
+    "keep",
+    "prev",
+    "hold",
+    "记忆",
+    "保留",
+    "上次",
+)
 
 
 @dataclass(frozen=True)
@@ -275,8 +283,8 @@ def parse_device_profile(text: str) -> DeviceProfile:
         recognised.append((sid, item))
 
     sids = [sid for sid, _ in recognised]
-    cover_like = any(sid in _COVER_SERVICES for sid in sids)
-    onoff_like = any(sid in _ONOFF_SERVICES for sid in sids)
+    cover_like = any(base_sid(sid) in _COVER_SERVICES for sid in sids)
+    onoff_like = any(base_sid(sid) in _ONOFF_SERVICES for sid in sids)
 
     contracts: dict[str, dict] = {}
     for sid, service in recognised:
@@ -356,33 +364,34 @@ def _contract_for(
     sid: str, service: dict, *, cover_like: bool, onoff_like: bool
 ) -> dict:
     characteristics = _characteristics(service)
-    if sid == "brightness":
+    base = base_sid(sid)
+    if base == "brightness":
         return _range_contract(_find_char(characteristics, "brightness"), 0, 255)
-    if sid == "cct":
+    if base == "cct":
         char = _find_char(
             characteristics, "colorTemperature", "colorTemp", "colourTemperature"
         )
         # cct accepts Kelvin only; a 0-100 Profile range cannot be used as-is.
         return _range_contract(char, 1000, 10000)
-    if sid == "openLevel":
+    if base == "openLevel":
         char = _find_char(characteristics, "targetLevel", "openLevel", "level")
         return _range_contract(char, 0, 100)
-    if sid == "opener":
+    if base == "opener":
         char = _find_char(characteristics, "target", "targetLevel", "position")
         return _range_contract(char, 0, 100)
-    if sid == "motor":
+    if base == "motor":
         return _motor_contract(characteristics)
-    if sid == "mode":
+    if base == "mode":
         return _mode_contract(characteristics)
-    if sid == "fan":
+    if base == "fan":
         return _fan_contract(characteristics)
-    if sid in {"action", "leftAction"}:
+    if base == "action":
         return _action_contract(characteristics, cover_like, onoff_like)
-    if sid in {"temperature", "humidity"}:
+    if base in {"temperature", "humidity"}:
         return _measurement_contract(characteristics)
-    if sid == "electric":
+    if base == "electric":
         return _electric_contract(characteristics)
-    if sid == "status":
+    if base == "status":
         return _status_contract(characteristics)
     return {}
 
@@ -412,19 +421,23 @@ def _mode_contract(characteristics: list[dict]) -> dict:
 def _fan_contract(characteristics: list[dict]) -> dict:
     # 上游 fan 适配器只接受 gear_values / direction_enabled；
     # speed 的 min/max 不是合法 contract 键，不能写进 contract。
+    # gear 与 direction 是两类独立枚举，不能按“第一个出现的特性”混用：
+    # A0NQ 等 Profile 里 direction 排在 gear 前面，混用会把摆风当档位。
     contract: dict = {}
-    direction_char = _find_char(
-        characteristics, "direction", "gear", "fanSpeed", "windSpeed"
-    )
-    if direction_char is not None:
+    gear_char = _find_char(characteristics, "gear", "fanSpeed", "windSpeed")
+    if gear_char is not None:
         gears: dict[str, int] = {}
-        for value, desc in _enum_entries(direction_char):
+        for value, desc in _enum_entries(gear_char):
             key = desc or str(value)
             if key and key not in gears:
                 gears[key] = value
         if gears:
             contract["gear_values"] = gears
-    return contract if contract else {}
+    if "gear_values" in contract and _find_char(characteristics, "direction") is None:
+        # 只有 gear、没有 direction 的 Profile：关掉摆风处理，避免恒报
+        # direction=1（上游默认 direction_enabled=true）。
+        contract["direction_enabled"] = False
+    return contract
 
 
 def _action_contract(
@@ -475,6 +488,8 @@ def _measurement_contract(characteristics: list[dict]) -> dict:
     )
     if current is None:
         current = numeric[0]
+    # 先按名称找 target/set 类特性；preserveTarget、holdTarget 这类“保留目标”
+    # 只是辅助字段，不能当成写入字段（它们通常排在前面的 RW 位置）。
     target = next(
         (
             char
@@ -482,11 +497,23 @@ def _measurement_contract(characteristics: list[dict]) -> dict:
             if char is not current
             and (
                 _starts_with(name(char), _TARGET_NAMES)
-                or _text(char.get("method")).upper() == "RW"
+                or _ends_with(name(char), _TARGET_NAMES)
             )
+            and not _starts_with(name(char), _NEUTRAL_TARGET_NAMES)
         ),
         None,
     )
+    if target is None:
+        target = next(
+            (
+                char
+                for char in numeric
+                if char is not current
+                and _text(char.get("method")).upper() == "RW"
+                and not _starts_with(name(char), _NEUTRAL_TARGET_NAMES)
+            ),
+            None,
+        )
     if target is None:
         if name(current) in _TARGET_NAMES or _starts_with(name(current), _TARGET_NAMES):
             # Only a setpoint characteristic exists, so there is nothing to
@@ -616,6 +643,11 @@ def _role(table: dict[str, str], text: str) -> str | None:
 def _starts_with(text: str, prefixes: tuple[str, ...]) -> bool:
     lowered = text.lower()
     return any(lowered.startswith(prefix) for prefix in prefixes)
+
+
+def _ends_with(text: str, suffixes: tuple[str, ...]) -> bool:
+    lowered = text.lower()
+    return any(lowered.endswith(suffix) for suffix in suffixes)
 
 
 def _int(value: object) -> int | None:
